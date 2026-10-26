@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
 <meta name="robots" content="noindex,nofollow">
 <title>História da nossa família</title>
 <script>
@@ -12,8 +12,8 @@
    NUNCA coloque a chave "service_role" aqui.
    Em branco = MODO TESTE LOCAL (tudo fica só no navegador).
    ===================================================================== */
-const SUPABASE_URL = "https://aiktwqshbbvzlsfoymqa.supabase.co";        // ex.: "https://abcdefgh.supabase.co"
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFpa3R3cXNoYmJ2emxzZm95bXFhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI5NzkxNzMsImV4cCI6MjEwODU1NTE3M30.DwdzWtpQb8LsO7XP2HtbcvoJlw-YPNB0d7Jz7A09lh0";   // ex.: "eyJhbGciOi..."
+const SUPABASE_URL = "";        // ex.: "https://abcdefgh.supabase.co"
+const SUPABASE_ANON_KEY = "";   // ex.: "eyJhbGciOi..."
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -147,6 +147,29 @@ svg.arv .lig.casal{stroke:#c0392b;stroke-width:3}
 code{background:#eef2ea;padding:.05rem .35rem;border-radius:6px;font-size:.92em}
 .painel ol,.painel ul{padding-left:1.3rem}.painel li{margin:.35rem 0}
 body.admin{font-size:17px}
+
+/* --- v3: celular --- */
+.topo{position:static;background:transparent;border-bottom:0;padding:.7rem 1rem .1rem}
+.status{top:.6rem;right:.6rem}
+main#tela{padding:.5rem 1rem .4rem}
+.acoes{position:static;background:none;padding:.3rem 1rem 1.5rem}
+.acoes.espaco{padding-bottom:45dvh}
+.acoes .in{max-width:760px;margin:0 auto;display:grid;grid-template-columns:1fr 1.5fr;gap:.7rem}
+.cartao-q{background:#fff;border:1px solid var(--linha);border-radius:24px;padding:1.1rem 1.1rem 1.2rem;box-shadow:0 3px 0 var(--linha)}
+.etapa-pill{display:inline-flex;align-items:center;gap:.45rem;background:var(--faixa);color:var(--acento-esc);border-radius:99px;padding:.3rem .95rem;font-weight:700;font-size:.95rem;margin-bottom:.8rem}
+.cartao-q .pergunta{font-size:clamp(1.55rem,6.4vw,2.2rem);margin-bottom:.35em}
+.cartao-q .dica{margin:0 0 1rem}
+.ajuda-pular{color:var(--muted);font-size:.98rem;margin:.9rem 0 0}
+.btn.pequeno{min-height:54px;font-size:1.1rem}
+#b-pular,#b-prox{font-size:1.2rem}
+.opcao{font-size:1.3rem}
+.acoes #status{max-width:760px;margin:0 auto .45rem;min-height:1.5rem;text-align:center;font-size:.98rem;color:var(--muted)}
+.status-linha.ok{color:var(--verde)!important;font-weight:700}.status-linha.off{color:#8a5a00!important;font-weight:700}
+/* teclado aberto (pouca altura visível): compacta para a pergunta, o campo e os botões caberem juntos */
+@media (max-height:560px){.ajuda-pular,.etapa-pill{display:none}.cartao-q{padding:.8rem 1rem 1rem}.cartao-q .pergunta{font-size:1.45rem}.cartao-q .dica{font-size:.92rem;margin-bottom:.6rem}
+  textarea.campo{min-height:84px;font-size:1.3rem}.acoes #status{min-height:1.1rem;margin-bottom:.25rem;font-size:.9rem}.campo{min-height:58px;font-size:1.45rem;padding:.55rem .9rem}.btn{min-height:56px}.topo{padding-top:.3rem;padding-bottom:0}.cartao-q .dica{margin-bottom:.5rem}}
+
+.resumao{background:#fff;border:1px solid var(--linha);border-radius:14px;padding:1rem 1.2rem;margin-top:.8rem;white-space:pre-wrap;word-break:break-word;font-family:var(--sans);font-size:1rem;line-height:1.65}
 .arv-barra .zoom{display:flex;flex-wrap:wrap;gap:.35rem;flex:1 1 100%}.arv-barra .zoom .b{margin:0}
 .legenda-d{margin:.4rem 0}.legenda-d summary{cursor:pointer;color:var(--muted);font-size:.9rem;padding:.3rem 0}
 @media(max-width:640px){.aviso-local{font-size:.82rem;padding:.4rem .7rem}.ad-topo h1{font-size:1.05rem}#conteudo{padding:.8rem .6rem 3rem}}
@@ -168,9 +191,8 @@ body.admin{font-size:17px}
     <div class="linha"><span class="marca">🌳 História da nossa família</span><span id="etapa-txt"></span></div>
     <div class="barra" role="progressbar" aria-label="Progresso"><i id="barra" style="width:0%"></i></div>
   </header>
-  <div id="status" class="status" hidden aria-live="polite"></div>
   <main id="tela"></main>
-  <div id="acoes" class="acoes" hidden><div class="in" id="acoes-in"></div></div>
+  <div id="acoes" class="acoes" hidden><div id="status" class="status-linha" aria-live="polite"></div><div class="in" id="acoes-in"></div></div>
 </div>
 
 <!-- Painel administrativo -->
@@ -493,7 +515,7 @@ function derivarPessoas(r) {
   const origIt = d => { if (/ital/i.test(semAcento(d.origem_familia))) d.italiano = 'talvez'; return d; };
   const eu = g('eu.nome');
   if (eu) { const d = campos('eu', /^(Homem|Mulher)$/.test(g('eu.sexo')) ? g('eu.sexo') : '');
-    d.local_atual = g('eu.mora'); d.contato = g('eu.contato'); add('eu', d, { pai: 'pai', mae: 'mae', conj: g('eu.conjuge') ? 'conj' : null }); }
+    d.local_atual = g('eu.mora'); d.contato = g('eu.contato'); d.falecido = 'nao'; add('eu', d, { pai: 'pai', mae: 'mae', conj: g('eu.conjuge') ? 'conj' : null }); }
   if (g('pai.nome')) add('pai', origIt(campos('pai', 'Homem')), { pai: 'avo_pm', mae: 'avo_pf' });
   if (g('mae.nome')) add('mae', origIt(campos('mae', 'Mulher')), { pai: 'avo_mm', mae: 'avo_mf' });
   [['avo_pm', 'Homem'], ['avo_pf', 'Mulher'], ['avo_mm', 'Homem'], ['avo_mf', 'Mulher']].forEach(([p, s]) => { if (g(p + '.nome')) add(p, origIt(campos(p, s))); });
@@ -848,10 +870,10 @@ const Familia = (function () {
     } catch (e) {}
   }
   function status(t) {
-    const el = $('#status');
-    if (t === 'ok') { el.hidden = false; el.className = 'status'; el.textContent = '✓ Salvo'; clearTimeout(status.t); status.t = setTimeout(() => el.hidden = true, 1800); }
-    else if (t === 'salvando') { el.hidden = false; el.className = 'status'; el.textContent = 'Salvando…'; }
-    else if (t === 'off') { el.hidden = false; el.className = 'status off'; el.textContent = 'Sem internet — vou salvar assim que voltar'; }
+    const el = $('#status'); if (!el) return; clearTimeout(status.t);
+    if (t === 'ok') { el.className = 'status-linha ok'; el.textContent = '✓ Salvo'; status.t = setTimeout(() => { el.className = 'status-linha'; el.textContent = ''; }, 2200); }
+    else if (t === 'salvando') { el.className = 'status-linha'; el.textContent = 'Salvando…'; }
+    else if (t === 'off') { el.className = 'status-linha off'; el.textContent = 'Sem internet: vou salvar assim que voltar'; }
   }
   let flushing = false, flushTimer = null;
   function guardar(k, v, p) { resp[k] = { v, p: !!p }; pend[k] = { v, p: !!p }; persist(); }
@@ -914,34 +936,52 @@ const Familia = (function () {
     const i = PERGUNTAS.findIndex(q => vis(q) && !resp[q.k]); return i < 0 ? 0 : i;
   }
 
+  const EMO = { eu: '🙋', pai: '👨', mae: '👩', avo_pm: '👴', avo_pf: '👵', avo_mm: '👴', avo_mf: '👵', perto: '👨‍👩‍👧', cap: '⭐', it: '🇮🇹', docs: '📷', fim: '✍️' };
   function campoHtml(q, v) {
     if (q.t === 'escolha') return `<div class="opcoes" role="group">${q.opcoes.map(o => `<button type="button" class="opcao ${v === o ? 'sel' : ''}" data-op="${esc(o)}">${esc(o)}</button>`).join('')}</div>`;
-    if (q.t === 'longo') return `<textarea id="campo" class="campo" placeholder="${esc(q.ph || '')}" aria-label="${esc(q.q)}">${esc(v)}</textarea>`;
+    if (q.t === 'longo') return `<textarea id="campo" class="campo" rows="4" autocapitalize="sentences" placeholder="${esc(q.ph || '')}" aria-label="${esc(q.q)}">${esc(v)}</textarea>`;
     if (q.t === 'arquivo') return `<input type="file" id="arq" accept="image/*,application/pdf" multiple hidden>
       <button type="button" class="btn cheio" id="b-arq" style="width:100%">📷 Tirar foto ou escolher arquivo</button>
       <ul class="docs-lista" id="docs-lista"></ul>`;
-    return `<input id="campo" class="campo" type="${q.t === 'tel' ? 'tel' : 'text'}" inputmode="${q.t === 'tel' ? 'tel' : 'text'}" autocomplete="off" placeholder="${esc(q.ph || '')}" value="${esc(v)}" aria-label="${esc(q.q)}">`;
+    const ano = /\.(nasc|falec)$/.test(q.k), nome = /\.(nome|solteira|conjuge)$/.test(q.k);
+    const modo = q.t === 'tel' ? 'tel' : ano ? 'numeric' : 'text';
+    return `<input id="campo" class="campo" type="text" inputmode="${modo}" enterkeyhint="next" autocomplete="off" autocorrect="off" spellcheck="false" autocapitalize="${nome ? 'words' : 'sentences'}" ${ano ? 'maxlength="30"' : ''} placeholder="${esc(q.ph || '')}" value="${esc(v)}" aria-label="${esc(q.q)}">`;
   }
+
+  // Mantém os botões à vista quando o teclado do celular abre (usa a área realmente visível da tela)
+  function garantirBotoes() {
+    const a = document.activeElement; if (!a || !/^(INPUT|TEXTAREA)$/.test(a.tagName) || a.type === 'file') return;
+    const b = $('#b-prox'); if (!b) return;
+    const vv = window.visualViewport, visivelAte = vv ? vv.offsetTop + vv.height : window.innerHeight;
+    const sobra = b.getBoundingClientRect().bottom - visivelAte + 14;
+    if (sobra > 0) window.scrollBy({ top: sobra, behavior: 'smooth' });
+  }
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', () => { setTimeout(garantirBotoes, 60); });
 
   function telaPergunta() {
     const q = PERGUNTAS[idx]; if (!q) return telaFinal();
     const e = q.etapa; document.body.className = 'tema-' + (e.tema || 'base');
     barra(); persist();
     const v = val(q.k);
-    tela.innerHTML = `<section class="fade" aria-live="polite" data-k="${esc(q.k)}">
-      ${e.especial ? `<div class="faixa-especial">${esc(e.especial)}</div>` : `<div class="dica" style="margin:0 0 .6rem">${esc(e.titulo)}</div>`}
+    const ehTexto = q.t === 'texto' || q.t === 'longo' || q.t === 'tel';
+    tela.innerHTML = `<section class="fade cartao-q" aria-live="polite" data-k="${esc(q.k)}">
+      ${e.especial ? `<div class="faixa-especial">${esc(e.especial)}</div>` : `<div class="etapa-pill"><span aria-hidden="true">${EMO[e.id] || '🌳'}</span> ${esc(e.titulo)}</div>`}
       <h1 class="pergunta">${esc(q.q)}</h1>
       ${q.dica ? `<p class="dica">${esc(q.dica)}</p>` : ''}
-      ${campoHtml(q, v)}</section>`;
+      ${campoHtml(q, v)}
+      <p class="ajuda-pular">Não sabe? Sem problema: toque em <b>Pular</b>.</p></section>`;
     const ant = vizinho(-1);
+    acoes.classList.toggle('espaco', ehTexto);
     botoes(`<button class="btn suave" id="b-pular">Pular</button>
             <button class="btn cheio" id="b-prox">Continuar →</button>
-            ${ant >= 0 ? '<button class="link" id="b-volta" style="grid-column:1/-1">← Voltar</button>' : ''}
+            ${ant >= 0 ? '<button class="btn suave pequeno" id="b-volta" style="grid-column:1/-1">← Voltar</button>' : ''}
             <button class="link" id="b-parar" style="grid-column:1/-1">Parar por hoje (tudo fica salvo)</button>`);
-
+    window.scrollTo(0, 0);
     const campo = $('#campo');
     if (campo) {
-      if (!/Mobi|Android/i.test(navigator.userAgent)) campo.focus();
+      try { campo.focus({ preventScroll: true }); } catch (err) { campo.focus(); }
+      campo.addEventListener('focus', () => { setTimeout(garantirBotoes, 350); setTimeout(garantirBotoes, 800); });
+      setTimeout(garantirBotoes, 400);
       campo.addEventListener('input', () => { guardar(q.k, campo.value, false); flushLogo(); });
       if (q.t !== 'longo') campo.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); avancar(); } });
     }
@@ -954,7 +994,6 @@ const Familia = (function () {
     $('#b-pular').onclick = () => { guardar(q.k, '', true); flush(); ir(1); };
     if ($('#b-volta')) $('#b-volta').onclick = () => ir(-1);
     $('#b-parar').onclick = telaPausa;
-    window.scrollTo(0, 0);
   }
 
   function avancar() {
@@ -1047,7 +1086,7 @@ const Admin = (function () {
                    equilibrado: [0.85, 'Equilibrado (recomendado)', 'liga mesmo 1º nome + mesmo sobrenome, ou contexto forte (mesma mãe, mesmo filho)'],
                    agressivo: [0.70, 'Agressivo', 'liga até pelo primeiro nome quando só existe uma pessoa assim'] };
   const ABAS = [['painel', 'Painel', '📊'], ['convites', 'Convites', '✉️'], ['respostas', 'Respostas', '📝'], ['pessoas', 'Pessoas', '👥'],
-    ['ligacoes', 'Ligações', '🔗'], ['arvore', 'Árvore', '🌳'], ['italia', 'Capelasso e Itália', '🇮🇹'], ['docs', 'Documentos', '📎'], ['config', 'Configuração', '⚙️']];
+    ['ligacoes', 'Ligações', '🔗'], ['arvore', 'Árvore', '🌳'], ['resumo', 'Resumão', '📄'], ['italia', 'Capelasso e Itália', '🇮🇹'], ['docs', 'Documentos', '📎'], ['config', 'Configuração', '⚙️']];
   const S = { aba: 'painel', convites: [], respostas: [], pessoas: [], docs: [], resp: {}, G: null, zoom: 0, arv: { modo: 'tudo', alvo: '', foco: false },
     busca: '', novoToken: null, respSel: '', nivel: localStorage.getItem('arv_nivel') || 'equilibrado', diag: null, ligado: false };
   const limiar = () => (NIVEIS[S.nivel] || NIVEIS.equilibrado)[0];
@@ -1239,6 +1278,54 @@ const Admin = (function () {
       <div class="arv-wrap" id="arv">${svgArvore()}</div></div>`;
   }
 
+
+  // ------------------------------------------------------------ resumão (texto corrido)
+  function textoResumao() {
+    const N = nos(); if (!N.length) return 'Ainda não há ninguém na árvore.';
+    const L = layoutArvore(S.G, new Set(S.G.nodes.keys()));
+    const ord = N.slice().sort((a, b) => (L.pos[a.id].y - L.pos[b.id].y) || (L.pos[a.id].x - L.pos[b.id].x));
+    const niveis = [...new Set(ord.map(n => L.pos[n.id].y))].sort((a, b) => a - b);
+    const g = (n, m, f, x) => n.sexo === 'Homem' ? m : n.sexo === 'Mulher' ? f : x;
+    const SEM = 'sem dados por enquanto', NENHUM = 'nenhum cadastrado por enquanto';
+    const sit = n => n.falecido === 'sim' ? g(n, 'falecido', 'falecida', 'falecido(a)') + (anoDe(n.falecimento) ? ' em ' + anoDe(n.falecimento) : '')
+      : n.falecido === 'nao' ? g(n, 'vivo', 'viva', 'vivo(a)') : 'sem informação se está vivo(a) ou falecido(a)';
+    const nomeDe = id => (id && no(id)) ? no(id).nome : null;
+    const porAno = (a, b) => (anoDe(a.nascimento) || 9999) - (anoDe(b.nascimento) || 9999);
+    const filhosDe = n => (S.G.filhos.get(n.id) || []).map(no).filter(Boolean).sort(porAno);
+    const parceiros = n => { const s = new Set(); if (n.conj) s.add(n.conj); filhosDe(n).forEach(f => [f.pai, f.mae].forEach(p => { if (p && p !== n.id) s.add(p); })); return [...s].map(nomeDe).filter(Boolean); };
+    const vivos = N.filter(n => n.falecido === 'nao').length, mortos = N.filter(n => n.falecido === 'sim').length;
+    const semPai = N.filter(n => !n.pai), semMae = N.filter(n => !n.mae), semAmbos = N.filter(n => !n.pai && !n.mae);
+    const semSit = N.filter(n => !n.falecido), semAno = N.filter(n => !anoDe(n.nascimento));
+    const lista = a => a.length ? a.map(n => n.nome).join('; ') : 'ninguém — tudo preenchido';
+    let t = `RESUMÃO DA FAMÍLIA\n${N.length} pessoas · gerado em ${new Date().toLocaleDateString('pt-BR')}\n\n`;
+    t += `NÚMEROS\n• ${N.length} pessoas: ${vivos} vivas, ${mortos} falecidas, ${N.length - vivos - mortos} sem informação\n`;
+    t += `• Sem dados do pai: ${semPai.length}\n• Sem dados da mãe: ${semMae.length}\n• Sem dados de nenhum dos dois: ${semAmbos.length}\n• Sem ano de nascimento: ${semAno.length}\n`;
+    t += `• Ligadas por nome (citadas em mais de uma resposta): ${N.filter(n => n.rows.length > 1).length}\n\n`;
+    let i = 0;
+    niveis.forEach((y, gi) => {
+      t += `━━━ GERAÇÃO ${gi + 1}${gi === 0 ? ' (mais antiga)' : gi === niveis.length - 1 && niveis.length > 1 ? ' (mais nova)' : ''} ━━━\n\n`;
+      ord.filter(n => L.pos[n.id].y === y).forEach(n => {
+        i++;
+        const marcas = (ehCap(n) ? ' · [Capelasso]' : '') + (n.italiano === 'sim' ? ' · [origem italiana]' : n.italiano === 'talvez' ? ' · [talvez origem italiana]' : '');
+        t += `${i}. ${n.nome}${anoDe(n.nascimento) ? ' (' + anoDe(n.nascimento) + ')' : ''} — ${sit(n)}${n.local_nascimento ? ' · nasceu em ' + n.local_nascimento : ''}${marcas}\n`;
+        t += `   Pai: ${nomeDe(n.pai) || SEM}\n   Mãe: ${nomeDe(n.mae) || SEM}\n`;
+        const par = parceiros(n); t += `   Cônjuge/parceiro(a): ${par.length ? par.join(', ') : NENHUM}\n`;
+        const fl = filhosDe(n); t += `   Filhos(as): ${fl.length ? fl.map(f => f.nome + (f.sexo === 'Homem' ? ' (filho)' : f.sexo === 'Mulher' ? ' (filha)' : '')).join(', ') : NENHUM}\n`;
+        if (n.conflito) t += `   ⚠ As respostas divergem sobre o pai ou a mãe desta pessoa. Vale conferir.\n`;
+        t += '\n';
+      });
+    });
+    t += `━━━ O QUE AINDA FALTA ━━━\n\n`;
+    t += `Sem pai cadastrado (${semPai.length}): ${lista(semPai)}\n\nSem mãe cadastrada (${semMae.length}): ${lista(semMae)}\n\n`;
+    t += `Sem informação se está vivo(a) ou falecido(a) (${semSit.length}): ${lista(semSit)}\n\nSem ano de nascimento (${semAno.length}): ${lista(semAno)}\n`;
+    return t;
+  }
+  function vResumo() {
+    return `<div class="painel"><h2>Resumão</h2><p style="color:var(--muted)">A família inteira em texto: quem é pai e mãe de quem, quem são os filhos, quem está vivo ou falecido e o que ainda está sem dados. Atualiza sozinho conforme a árvore cresce.</p>
+      <button class="b cheio" data-act="copiar-resumo" style="min-height:44px">Copiar texto</button><button class="b" data-act="baixar-resumo" style="min-height:44px">Baixar .txt</button>
+      <pre class="resumao">${esc(textoResumao())}</pre></div>`;
+  }
+
   // ------------------------------------------------------------ Capelasso e Itália
   function vItalia() {
     const N = nos(), caps = N.filter(ehCap), itas = N.filter(n => n.italiano === 'sim' || n.italiano === 'talvez'), pc = S.convites.map(c => ({ c, r: S.resp[c.id] || {} }));
@@ -1318,7 +1405,7 @@ const Admin = (function () {
   }
 
   // ------------------------------------------------------------ render + eventos
-  const VISTAS = { painel: vPainel, convites: vConvites, respostas: vRespostas, pessoas: vPessoas, ligacoes: vLigacoes, arvore: vArvore, italia: vItalia, docs: vDocs, config: vConfig };
+  const VISTAS = { painel: vPainel, convites: vConvites, respostas: vRespostas, pessoas: vPessoas, ligacoes: vLigacoes, arvore: vArvore, resumo: vResumo, italia: vItalia, docs: vDocs, config: vConfig };
   function render() {
     const ns = S.pessoas.length ? sugestoes().length : 0;
     $('#abas').innerHTML = ABAS.map(([k, n, e]) => `<button data-aba="${k}" class="${S.aba === k ? 'on' : ''}">${e} ${n}${k === 'ligacoes' && ns ? `<span class="badge">${ns}</span>` : ''}</button>`).join('');
@@ -1338,6 +1425,8 @@ const Admin = (function () {
       if (a === 'abrir-arv') { ev.preventDefault(); S.arv.alvo = d.id; S.arv.modo = 'asc'; return irAba('arvore'); }
       seguro(async () => {
         if (a === 'copiar') { const l = linkFam(d.t); try { await navigator.clipboard.writeText(l); aviso('Link copiado ✓'); } catch (e) { prompt('Copie o link:', l); } }
+        else if (a === 'copiar-resumo') { try { await navigator.clipboard.writeText(textoResumao()); aviso('Resumão copiado ✓'); } catch (e) { aviso('Selecione o texto e copie manualmente.'); } }
+        else if (a === 'baixar-resumo') { const u = URL.createObjectURL(new Blob([textoResumao()], { type: 'text/plain;charset=utf-8' })); const l = document.createElement('a'); l.href = u; l.download = 'resumao-familia.txt'; l.click(); setTimeout(() => URL.revokeObjectURL(u), 2000); }
         else if (a === 'copiar-sql') { try { await navigator.clipboard.writeText($('#sql-src').textContent); aviso('SQL copiado ✓'); } catch (e) { aviso('Selecione o texto e copie manualmente.'); } }
         else if (a === 'zap') { const c = S.convites.find(x => x.token === d.t); window.open('https://wa.me/?text=' + encodeURIComponent(`Oi ${c ? c.nome.split(' ')[0] : ''}! Estou montando a história da nossa família. Responda no celular: é bem fácil, uma pergunta por vez, e não precisa saber tudo: ${linkFam(d.t)}`), '_blank', 'noopener'); }
         else if (a === 'toggle') { const c = S.convites.find(x => x.id === d.id); await API.atualizarConvite(d.id, { ativo: !c.ativo }); await recarregar(); }
