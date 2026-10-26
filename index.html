@@ -1,0 +1,207 @@
+-- =====================================================================
+--  ÁRVORE GENEALÓGICA — esquema do banco (Supabase / PostgreSQL)
+--  Cole TUDO no  Supabase → SQL Editor → New query → Run.
+--  Pode rodar de novo sem medo: o script é reexecutável.
+--
+--  Modelo de segurança:
+--   • Familiares (sem login) só conseguem falar com o banco por funções
+--     (RPC) que exigem o TOKEN do convite. Nenhuma tabela fica aberta.
+--   • Só quem está logado E está na tabela "admins" lê/edita tudo.
+-- =====================================================================
+
+create table if not exists public.admins (
+  email text primary key
+);
+
+create or replace function public.is_admin() returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.admins
+    where lower(email) = lower(coalesce(auth.jwt() ->> 'email', ''))
+  );
+$$;
+
+create or replace function public.sou_admin() returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.is_admin();
+$$;
+
+-- ---------------------------------------------------------------- convites
+create table if not exists public.convites (
+  id            uuid primary key default gen_random_uuid(),
+  token         text unique not null default replace(gen_random_uuid()::text, '-', ''),
+  nome          text not null,
+  parentesco    text,
+  ativo         boolean not null default true,
+  passo         text,
+  criado_em     timestamptz not null default now(),
+  ultimo_acesso timestamptz,
+  concluido_em  timestamptz
+);
+
+-- --------------------------------------------------------------- respostas
+create table if not exists public.respostas (
+  id            uuid primary key default gen_random_uuid(),
+  convite_id    uuid not null references public.convites(id) on delete cascade,
+  chave         text not null,
+  valor         text,
+  pulou         boolean not null default false,
+  atualizado_em timestamptz not null default now(),
+  unique (convite_id, chave)
+);
+create index if not exists respostas_convite_idx on public.respostas(convite_id);
+
+-- ----------------------------------------------------------------- pessoas
+create table if not exists public.pessoas (
+  id                 uuid primary key default gen_random_uuid(),
+  nome               text not null,
+  nascimento         text,
+  local_nascimento   text,
+  local_atual        text,
+  falecido           text,           -- 'sim' | 'nao' | ''
+  falecimento        text,
+  sobrenome_solteira text,
+  origem_familia     text,
+  italiano           text,           -- 'sim' | 'talvez' | 'nao' | ''
+  papel              text,           -- eu, pai, mae, avo_pm, avo_pf, avo_mm, avo_mf
+  contato            text,
+  pai_id             uuid references public.pessoas(id) on delete set null,
+  mae_id             uuid references public.pessoas(id) on delete set null,
+  convite_id         uuid references public.convites(id) on delete set null,
+  status             text not null default 'revisar',   -- 'revisar' | 'confirmado'
+  notas              text,
+  nao_duplicata      uuid[] not null default '{}',
+  sexo               text,           -- 'Homem' | 'Mulher' | ''
+  conjuge_id         uuid references public.pessoas(id) on delete set null,
+  mesmo_que          uuid references public.pessoas(id) on delete set null,  -- ligação por nome: esta linha = aquela
+  ligacao            text,           -- 'auto|0.91|motivo' ou 'manual'
+  editado            boolean not null default false,
+  criado_em          timestamptz not null default now()
+);
+alter table public.pessoas add column if not exists sexo text;
+alter table public.pessoas add column if not exists conjuge_id uuid references public.pessoas(id) on delete set null;
+alter table public.pessoas add column if not exists mesmo_que uuid references public.pessoas(id) on delete set null;
+alter table public.pessoas add column if not exists ligacao text;
+alter table public.pessoas add column if not exists editado boolean not null default false;
+create index if not exists pessoas_convite_idx on public.pessoas(convite_id);
+
+-- -------------------------------------------------------------- documentos
+create table if not exists public.documentos (
+  id         uuid primary key default gen_random_uuid(),
+  convite_id uuid references public.convites(id) on delete cascade,
+  pessoa_id  uuid references public.pessoas(id) on delete set null,
+  caminho    text not null,
+  nome       text,
+  criado_em  timestamptz not null default now()
+);
+create index if not exists documentos_convite_idx on public.documentos(convite_id);
+
+-- ------------------------------------------------- RLS: só admin nas tabelas
+alter table public.admins     enable row level security;
+alter table public.convites   enable row level security;
+alter table public.respostas  enable row level security;
+alter table public.pessoas    enable row level security;
+alter table public.documentos enable row level security;
+
+revoke all on all tables in schema public from anon;
+grant select, insert, update, delete on public.convites, public.respostas,
+      public.pessoas, public.documentos to authenticated;
+grant select on public.admins to authenticated;
+
+drop policy if exists admin_tudo on public.convites;
+drop policy if exists admin_tudo on public.respostas;
+drop policy if exists admin_tudo on public.pessoas;
+drop policy if exists admin_tudo on public.documentos;
+drop policy if exists admin_le    on public.admins;
+create policy admin_tudo on public.convites   for all to authenticated using (public.is_admin()) with check (public.is_admin());
+create policy admin_tudo on public.respostas  for all to authenticated using (public.is_admin()) with check (public.is_admin());
+create policy admin_tudo on public.pessoas    for all to authenticated using (public.is_admin()) with check (public.is_admin());
+create policy admin_tudo on public.documentos for all to authenticated using (public.is_admin()) with check (public.is_admin());
+create policy admin_le   on public.admins     for select to authenticated using (public.is_admin());
+
+-- ------------------------------------------- funções usadas pelos familiares
+create or replace function public.token_valido(p_token text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.convites where token = p_token and ativo);
+$$;
+
+create or replace function public.convite_abrir(p_token text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare c public.convites; r jsonb; d jsonb;
+begin
+  select * into c from public.convites where token = p_token and ativo;
+  if not found then return null; end if;
+  update public.convites set ultimo_acesso = now() where id = c.id;
+  select coalesce(jsonb_object_agg(chave, jsonb_build_object('v', valor, 'p', pulou)), '{}'::jsonb)
+    into r from public.respostas where convite_id = c.id;
+  select coalesce(jsonb_agg(jsonb_build_object('nome', nome, 'caminho', caminho) order by criado_em), '[]'::jsonb)
+    into d from public.documentos where convite_id = c.id;
+  return jsonb_build_object('nome', c.nome, 'parentesco', c.parentesco, 'passo', c.passo,
+                            'concluido', c.concluido_em is not null,
+                            'respostas', r, 'documentos', d);
+end $$;
+
+create or replace function public.resposta_salvar(p_token text, p_chave text, p_valor text, p_pulou boolean default false)
+returns void language plpgsql security definer set search_path = public as $$
+declare cid uuid;
+begin
+  select id into cid from public.convites where token = p_token and ativo;
+  if cid is null then raise exception 'convite_invalido'; end if;
+  if coalesce(length(p_chave), 0) = 0 or length(p_chave) > 80 or length(coalesce(p_valor, '')) > 5000 then
+    raise exception 'dados_invalidos';
+  end if;
+  insert into public.respostas (convite_id, chave, valor, pulou)
+  values (cid, p_chave, p_valor, coalesce(p_pulou, false))
+  on conflict (convite_id, chave)
+  do update set valor = excluded.valor, pulou = excluded.pulou, atualizado_em = now();
+end $$;
+
+create or replace function public.convite_passo(p_token text, p_passo text, p_concluido boolean default false)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  update public.convites
+     set passo = left(p_passo, 80),
+         concluido_em = case when p_concluido then coalesce(concluido_em, now()) else concluido_em end
+   where token = p_token and ativo;
+end $$;
+
+create or replace function public.documento_registrar(p_token text, p_caminho text, p_nome text)
+returns void language plpgsql security definer set search_path = public as $$
+declare cid uuid; n int;
+begin
+  select id into cid from public.convites where token = p_token and ativo;
+  if cid is null then raise exception 'convite_invalido'; end if;
+  if left(p_caminho, length(p_token) + 1) <> p_token || '/' then raise exception 'caminho_invalido'; end if;
+  select count(*) into n from public.documentos where convite_id = cid;
+  if n >= 60 then raise exception 'limite_de_arquivos'; end if;
+  insert into public.documentos (convite_id, caminho, nome) values (cid, p_caminho, left(p_nome, 200));
+end $$;
+
+grant execute on function public.token_valido(text)                       to anon, authenticated;
+grant execute on function public.convite_abrir(text)                      to anon, authenticated;
+grant execute on function public.resposta_salvar(text, text, text, boolean) to anon, authenticated;
+grant execute on function public.convite_passo(text, text, boolean)       to anon, authenticated;
+grant execute on function public.documento_registrar(text, text, text)    to anon, authenticated;
+grant execute on function public.sou_admin()                              to authenticated;
+
+-- ----------------------------------------------------------------- arquivos
+insert into storage.buckets (id, name, public)
+values ('documentos', 'documentos', false)
+on conflict (id) do nothing;
+
+drop policy if exists docs_familia_envia on storage.objects;
+drop policy if exists docs_admin_tudo    on storage.objects;
+create policy docs_familia_envia on storage.objects for insert to anon, authenticated
+  with check (bucket_id = 'documentos' and public.token_valido((storage.foldername(name))[1]));
+create policy docs_admin_tudo on storage.objects for all to authenticated
+  using (bucket_id = 'documentos' and public.is_admin())
+  with check (bucket_id = 'documentos' and public.is_admin());
+
+-- =====================================================================
+--  ÚLTIMO PASSO (rode separado, com o SEU e-mail de administrador):
+--
+--    insert into public.admins (email) values ('seu@email.com');
+--
+--  (antes, crie esse usuário em Authentication → Users → Add user,
+--   marcando "Auto Confirm User")
+-- =====================================================================
