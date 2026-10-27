@@ -241,6 +241,7 @@ dialog{border:0;border-radius:22px;padding:1.3rem;max-width:680px;width:calc(100
 .arv-opcoes{margin:.2rem 0 .5rem}.arv-opcoes summary{cursor:pointer;font-weight:700;color:var(--muted);padding:.4rem 0}
 .arv-opcoes .arv-barra{margin-top:.3rem}
 @media(max-width:699px){.arv-topo h2{font-size:1.2rem}}
+.aviso-sql{border:2px solid #e0a030;background:#fff9ea}
 /* família */
 .topo .linha{align-items:center}
 .tam{border:2px solid var(--linha);background:#fff;border-radius:99px;padding:.15rem .8rem;font-weight:700;font-size:.95rem;color:var(--tinta);cursor:pointer;min-height:38px;margin-left:.4rem}
@@ -390,6 +391,8 @@ create table if not exists public.pessoas (
   sobrenome_solteira text,
   origem_familia     text,
   italiano           text,           -- 'sim' | 'talvez' | 'nao' | ''
+  portugues          text,           -- 'sim' | 'talvez' | 'nao' | ''
+  outra_origem       text,           -- texto livre, ex.: 'Espanha'
   papel              text,           -- eu, pai, mae, avo_pm, avo_pf, avo_mm, avo_mf
   contato            text,
   pai_id             uuid references public.pessoas(id) on delete set null,
@@ -405,6 +408,8 @@ create table if not exists public.pessoas (
   editado            boolean not null default false,
   criado_em          timestamptz not null default now()
 );
+alter table public.pessoas add column if not exists portugues text;
+alter table public.pessoas add column if not exists outra_origem text;
 alter table public.pessoas add column if not exists sexo text;
 alter table public.pessoas add column if not exists conjuge_id uuid references public.pessoas(id) on delete set null;
 alter table public.pessoas add column if not exists mesmo_que uuid references public.pessoas(id) on delete set null;
@@ -574,8 +579,8 @@ const ETAPAS = [
     { k: 'eu.local', t: 'texto', q: 'Em que cidade você nasceu?', ph: 'Cidade e estado' },
     { k: 'eu.mora', t: 'texto', q: 'Em que cidade você mora hoje?', ph: 'Cidade e estado' },
     { k: 'eu.contato', t: 'tel', q: 'Qual é o seu WhatsApp?', dica: 'Só para tirar alguma dúvida com você, se precisar. Pode pular.', ph: '(00) 00000-0000' }] },
-  { id: 'pai', titulo: 'Seu pai', perguntas: perguntasPessoa('pai', 'm', 'do seu pai') },
-  { id: 'mae', titulo: 'Sua mãe', perguntas: perguntasPessoa('mae', 'f', 'da sua mãe') },
+  { id: 'pai', titulo: 'Seu pai', perguntas: perguntasPessoa('pai', 'm', 'do seu pai', { origem: true }) },
+  { id: 'mae', titulo: 'Sua mãe', perguntas: perguntasPessoa('mae', 'f', 'da sua mãe', { origem: true }) },
   { id: 'avo_pm', titulo: 'Avô paterno (pai do seu pai)', perguntas: perguntasPessoa('avo_pm', 'm', 'do pai do seu pai', { origem: true }) },
   { id: 'avo_pf', titulo: 'Avó paterna (mãe do seu pai)', perguntas: perguntasPessoa('avo_pf', 'f', 'da mãe do seu pai', { origem: true }) },
   { id: 'avo_mm', titulo: 'Avô materno (pai da sua mãe)', perguntas: perguntasPessoa('avo_mm', 'm', 'do pai da sua mãe', { origem: true }) },
@@ -584,6 +589,22 @@ const ETAPAS = [
     { k: 'eu.conjuge', t: 'texto', q: 'Qual é o nome do seu marido, esposa ou companheiro(a)?', dica: 'Se tiver. Pode escrever só o primeiro nome.', ph: 'Nome' },
     { k: 'eu.filhos', t: 'longo', q: 'Quais são os nomes dos seus filhos?', dica: 'Um por linha, ou separados por vírgula. Pode ser só o primeiro nome. É assim que a árvore liga você aos seus pais e avós.', ph: 'Ex.: Darliane, Pedro, Ana' },
     { k: 'eu.irmaos', t: 'longo', q: 'Quais são os nomes dos seus irmãos?', dica: 'Um por linha, ou separados por vírgula. Pode ser só o primeiro nome.', ph: 'Ex.: Carlos, Luzia' }] },
+  { id: 'orig', titulo: 'Origens da família', tema: 'it', especial: 'Seção especial: origens da família', perguntas: [
+    { k: 'orig.tem', t: 'escolha', q: 'Na sua família tem alguém de outra origem? Por exemplo, italiana ou de Portugal.', dica: 'Alguém que veio de outro país, ou cujos pais ou avós vieram.', opcoes: ['Sim', 'Talvez', 'Não', 'Não sei'] },
+    { k: 'orig.quem', t: 'longo', depende: r => simTalvez(r, 'orig.tem'), q: 'Quem é essa pessoa? E de que país ela veio?', dica: 'Exemplos: “meu bisavô Giuseppe, da Itália”, “minha avó Maria, de Portugal”. Pode escrever mais de uma. Só o que lembrar.', ph: 'Nome, parentesco e país' },
+    { k: 'orig.lugar', t: 'texto', depende: r => simTalvez(r, 'orig.tem'), q: 'Sabe de que cidade ou região de lá a família veio?', dica: 'Qualquer pista ajuda: o nome de uma cidadezinha, “norte da Itália”, “Minho”…', ph: 'Cidade ou região' },
+    { k: 'orig.chegada', t: 'texto', depende: r => simTalvez(r, 'orig.tem'), q: 'Sabe mais ou menos quando chegaram ao Brasil?', dica: 'Ano aproximado, ou “final dos anos 1800”.', ph: 'Ano ou época' },
+    { k: 'orig.porto', t: 'texto', depende: r => simTalvez(r, 'orig.tem'), q: 'Sabe onde chegaram ou onde foram morar primeiro?', dica: 'Porto, cidade, fazenda, colônia… o que lembrar.', ph: 'Lugar' },
+    { k: 'orig.sobrenomes', t: 'texto', q: 'Tem algum sobrenome antigo ou diferente na família que vale pesquisar?', dica: 'Documentos antigos às vezes trocam letras do sobrenome. Escreva como você lembra, ou outras formas que já viu.', ph: 'Sobrenomes' },
+    { k: 'orig.mais_velho', t: 'texto', q: 'Existe algum parente mais velho que conhece essas histórias?', dica: 'Quem sabe, mesmo que esteja longe. Isso nos ajuda a saber com quem conversar.', ph: 'Nome e, se souber, onde mora' },
+    { k: 'orig.guardados', t: 'escolha', q: 'Existe algum documento, foto ou carta antiga guardada na família?', opcoes: ['Sim, eu tenho', 'Sim, alguém da família tem', 'Não', 'Não sei'] },
+    { k: 'orig.cidadania', t: 'escolha', q: 'Alguém da família já tentou a cidadania de outro país (italiana, portuguesa…)?', opcoes: ['Sim', 'Não', 'Não sei'] }] },
+  { id: 'docs', titulo: 'Fotos e documentos', perguntas: [
+    { k: 'docs.arquivos', t: 'arquivo', q: 'Tem foto de algum documento ou foto antiga?', dica: 'Certidões, passaportes, cartas, retratos antigos. Tire a foto agora com o celular ou escolha da galeria. Pode pular.' }] },
+  { id: 'fim', titulo: 'Para finalizar', perguntas: [
+    { k: 'fim.extra', t: 'longo', q: 'Quer contar mais alguma coisa?', dica: 'Alguma história, um nome, uma dúvida… Fique à vontade.', ph: 'Escreva aqui' }] }
+];
+const ETAPAS_LEGADO = [
   { id: 'cap', titulo: 'O sobrenome Capelasso', tema: 'cap', especial: 'Seção especial: Capelasso', perguntas: [
     { k: 'cap.conhece', t: 'escolha', q: 'Você já ouviu falar do sobrenome Capelasso na sua família?', opcoes: ['Sim', 'Não', 'Não tenho certeza'] },
     { k: 'cap.quem', t: 'longo', depende: r => naoNeg(r, 'cap.conhece'), q: 'Quem na família tem ou teve esse sobrenome?', dica: 'Pode escrever mais de um nome. Só o que lembrar.', ph: 'Nomes das pessoas' },
@@ -599,15 +620,13 @@ const ETAPAS = [
     { k: 'it.porto', t: 'texto', depende: r => simTalvez(r, 'it.italiano'), q: 'Sabe onde chegaram ou onde foram morar primeiro?', dica: 'Porto, cidade, fazenda, colônia… o que lembrar.', ph: 'Lugar' },
     { k: 'it.mais_velho', t: 'texto', q: 'Existe algum parente mais velho que conhece essas histórias?', dica: 'Quem sabe, mesmo que esteja longe. Isso nos ajuda a saber com quem conversar.', ph: 'Nome e, se souber, onde mora' },
     { k: 'it.guardados', t: 'escolha', q: 'Existe algum documento, foto ou carta antiga guardada na família?', opcoes: ['Sim, eu tenho', 'Sim, alguém da família tem', 'Não', 'Não sei'] },
-    { k: 'it.cidadania', t: 'escolha', q: 'Alguém da família já tentou a cidadania italiana?', opcoes: ['Sim', 'Não', 'Não sei'] }] },
-  { id: 'docs', titulo: 'Fotos e documentos', perguntas: [
-    { k: 'docs.arquivos', t: 'arquivo', q: 'Tem foto de algum documento ou foto antiga?', dica: 'Certidões, passaportes, cartas, retratos antigos. Tire a foto agora com o celular ou escolha da galeria. Pode pular.' }] },
-  { id: 'fim', titulo: 'Para finalizar', perguntas: [
-    { k: 'fim.extra', t: 'longo', q: 'Quer contar mais alguma coisa?', dica: 'Alguma história, um nome, uma dúvida… Fique à vontade.', ph: 'Escreva aqui' }] }
+    { k: 'it.cidadania', t: 'escolha', q: 'Alguém da família já tentou a cidadania italiana?', opcoes: ['Sim', 'Não', 'Não sei'] }] }
 ];
+const ETAPA_LEGADO_ROTULO = 'Respostas antigas (sobrenome Capelasso e origem italiana)';
 const PERGUNTAS = [];
 ETAPAS.forEach((e, ei) => e.perguntas.forEach(q => PERGUNTAS.push(Object.assign({}, q, { etapa: e, ei }))));
-const visiveis = r => PERGUNTAS.filter(q => !q.depende || q.depende(r));
+ETAPAS_LEGADO.forEach(e => e.perguntas.forEach(q => PERGUNTAS.push(Object.assign({}, q, { etapa: Object.assign({}, e, { titulo: ETAPA_LEGADO_ROTULO }), ei: -1, legado: true }))));
+const visiveis = r => PERGUNTAS.filter(q => !q.legado && (!q.depende || q.depende(r)));
 
 /* --------------------------------------------- RESPOSTAS → PESSOAS (por convite) */
 function listaNomes(txt) {
@@ -620,7 +639,7 @@ function derivarPessoas(r) {
   const campos = (p, sexo) => ({ nome: g(p + '.nome'), nascimento: g(p + '.nasc'), local_nascimento: g(p + '.local'), falecimento: g(p + '.falec'),
     falecido: /faleceu/i.test(g(p + '.vivo')) ? 'sim' : /vivo|viva/i.test(g(p + '.vivo')) ? 'nao' : '', sobrenome_solteira: g(p + '.solteira'),
     origem_familia: g(p + '.origem'), sexo: sexo || '' });
-  const origIt = d => { if (/ital/i.test(semAcento(d.origem_familia))) d.italiano = 'talvez'; return d; };
+  const origIt = d => { const t = semAcento(d.origem_familia); if (/ital/.test(t)) d.italiano = 'talvez'; if (/portug|lusit/.test(t)) d.portugues = 'talvez'; return d; };
   const eu = g('eu.nome');
   if (eu) { const d = campos('eu', /^(Homem|Mulher)$/.test(g('eu.sexo')) ? g('eu.sexo') : '');
     d.local_atual = g('eu.mora'); d.contato = g('eu.contato'); d.falecido = 'nao'; add('eu', d, { pai: 'pai', mae: 'mae', conj: g('eu.conjuge') ? 'conj' : null }); }
@@ -691,7 +710,7 @@ function montarGrafo(rows) {
     n.rows.sort((a, b) => a.id === n.id ? -1 : b.id === n.id ? 1 : String(a.criado_em || '').localeCompare(String(b.criado_em || '')));
     const pick = k => { for (const r of n.rows) if (r[k]) return r[k]; return ''; };
     n.nome = n.rows.map(r => r.nome).sort((a, b) => tokens(b).k.length - tokens(a).k.length)[0] || n.rows[0].nome;
-    ['nascimento', 'local_nascimento', 'local_atual', 'falecido', 'falecimento', 'sobrenome_solteira', 'origem_familia', 'italiano', 'contato', 'sexo', 'notas'].forEach(k => n[k] = pick(k));
+    ['nascimento', 'local_nascimento', 'local_atual', 'falecido', 'falecimento', 'sobrenome_solteira', 'origem_familia', 'italiano', 'portugues', 'outra_origem', 'contato', 'sexo', 'notas'].forEach(k => n[k] = pick(k));
     n.status = n.rows.some(r => r.status === 'confirmado') ? 'confirmado' : 'revisar';
     n.convites = new Set(n.rows.map(r => r.convite_id).filter(Boolean));
     n.nao = new Set(); n.rows.forEach(r => (r.nao_duplicata || []).forEach(x => n.nao.add(x)));
@@ -940,6 +959,12 @@ const API = (function () {
       if (modo === 'remoto') { const r = await sb.storage.from(BUCKET).createSignedUrl(caminho, 3600); if (r.error) throw r.error; return r.data.signedUrl; }
       const x = ldb().documentos.find(d => d.caminho === caminho); return x ? x.dataurl : null;
     },
+    // O banco já tem as colunas de origem portuguesa? (bancos instalados antes desta versão ainda não têm)
+    async suportaPortugal() {
+      if (modo !== 'remoto') return true;
+      const r = await sb.from('pessoas').select('portugues,outra_origem', { head: true, count: 'exact' });
+      return !r.error;
+    },
     // diagnóstico da instalação (aba Configuração)
     async diagnostico() {
       const out = [];
@@ -947,6 +972,7 @@ const API = (function () {
       for (const t of ['convites', 'respostas', 'pessoas', 'documentos']) { const r = await sb.from(t).select('id', { count: 'exact', head: true }); out.push({ ok: !r.error, t: `Tabela “${t}”` + (r.error ? ' — ' + r.error.message : '') }); }
       const f = await sb.rpc('convite_abrir', { p_token: 'teste-inexistente' }); out.push({ ok: !f.error, t: 'Funções dos convites (RPC)' + (f.error ? ' — ' + f.error.message : '') });
       const c = await sb.from('pessoas').select('mesmo_que,sexo,conjuge_id,ligacao,editado', { head: true, count: 'exact' }); out.push({ ok: !c.error, t: 'Colunas de ligação por nome' + (c.error ? ' — rode o SQL de novo' : '') });
+      const pt = await sb.from('pessoas').select('portugues,outra_origem', { head: true, count: 'exact' }); out.push({ ok: !pt.error, t: 'Colunas de origem portuguesa' + (pt.error ? ' — rode o SQL de novo (aba Configuração)' : '') });
       const s = await sb.storage.from(BUCKET).list('', { limit: 1 }); out.push({ ok: !s.error, t: 'Armazenamento “documentos”' + (s.error ? ' — ' + s.error.message : '') });
       return out;
     }
@@ -964,7 +990,7 @@ const Familia = (function () {
 
   const tela = $('#tela'), acoes = $('#acoes'), acoesIn = $('#acoes-in');
   const val = (k) => (resp[k] && !resp[k].p ? (resp[k].v || '') : '');
-  const vis = q => !q.depende || q.depende(resp);
+  const vis = q => !q.legado && (!q.depende || q.depende(resp));
   function vizinho(dir) {
     for (let i = idx + dir; i >= 0 && i < PERGUNTAS.length; i += dir) if (vis(PERGUNTAS[i])) return i;
     return -1;
@@ -1041,7 +1067,7 @@ const Familia = (function () {
   }
 
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  const EMO = { eu: '🙋', pai: '👨', mae: '👩', avo_pm: '👴', avo_pf: '👵', avo_mm: '👴', avo_mf: '👵', perto: '👨‍👩‍👧', cap: '⭐', it: '🇮🇹', docs: '📷', fim: '✍️' };
+  const EMO = { eu: '🙋', pai: '👨', mae: '👩', avo_pm: '👴', avo_pf: '👵', avo_mm: '👴', avo_mf: '👵', perto: '👨‍👩‍👧', orig: '🌍', docs: '📷', fim: '✍️' };
   function campoHtml(q, v) {
     if (q.t === 'escolha') return `<div class="opcoes" role="group">${q.opcoes.map(o => `<button type="button" class="opcao ${v === o ? 'sel' : ''}" data-op="${esc(o)}">${esc(o)}</button>`).join('')}</div>`;
     const mic = SR ? '<button type="button" class="mic" id="b-mic" aria-label="Falar a resposta">🎤</button>' : '';
@@ -1078,7 +1104,10 @@ const Familia = (function () {
   }
   if (window.visualViewport) window.visualViewport.addEventListener('resize', () => { setTimeout(garantirBotoes, 60); });
 
+  let renderEm = 0;
+  const cedo = () => Date.now() - renderEm < 300;   // toque duplo: ignora toques logo depois da pergunta aparecer
   function telaPergunta() {
+    renderEm = Date.now();
     const q = PERGUNTAS[idx]; if (!q) return telaFinal();
     const e = q.etapa; document.body.className = 'tema-' + (e.tema || 'base');
     barra(); persist();
@@ -1108,12 +1137,12 @@ const Familia = (function () {
     }
     document.querySelectorAll('.opcao').forEach(b => b.onclick = () => {
       document.querySelectorAll('.opcao').forEach(x => x.classList.remove('sel')); b.classList.add('sel');
-      guardar(q.k, b.dataset.op, false); flush(); setTimeout(avancar, 280);
+      if (cedo()) return; guardar(q.k, b.dataset.op, false); flush(); setTimeout(() => { if (PERGUNTAS[idx] && PERGUNTAS[idx].k === q.k) avancar(); }, 280);
     });
     if (q.t === 'arquivo') ligarUpload(q);
-    $('#b-prox').onclick = avancar;
-    $('#b-pular').onclick = () => { guardar(q.k, '', true); flush(); ir(1); };
-    if ($('#b-volta')) $('#b-volta').onclick = () => ir(-1);
+    $('#b-prox').onclick = () => { if (!cedo()) avancar(); };
+    $('#b-pular').onclick = () => { if (cedo()) return; guardar(q.k, '', true); flush(); ir(1); };
+    if ($('#b-volta')) $('#b-volta').onclick = () => { if (!cedo()) ir(-1); };
     $('#b-parar').onclick = telaPausa;
   }
 
@@ -1211,10 +1240,14 @@ const Admin = (function () {
                    equilibrado: [0.85, 'Equilibrado (recomendado)', 'liga mesmo 1º nome + mesmo sobrenome, ou contexto forte (mesma mãe, mesmo filho)'],
                    agressivo: [0.70, 'Agressivo', 'liga até pelo primeiro nome quando só existe uma pessoa assim'] };
   const ABAS = [['painel', 'Painel', '📊'], ['convites', 'Convites', '✉️'], ['respostas', 'Respostas', '📝'], ['pessoas', 'Pessoas', '👥'],
-    ['ligacoes', 'Ligações', '🔗'], ['arvore', 'Árvore', '🌳'], ['resumo', 'Resumão', '📄'], ['italia', 'Capelasso e Itália', '🇮🇹'], ['docs', 'Documentos', '📎'], ['config', 'Configuração', '⚙️']];
-  const S = { aba: 'painel', convites: [], respostas: [], pessoas: [], docs: [], resp: {}, G: null, zoom: 0, arv: { modo: 'tudo', alvo: '', foco: false, full: false, centrar: null }, filtro: 'todos',
+    ['ligacoes', 'Ligações', '🔗'], ['arvore', 'Árvore', '🌳'], ['resumo', 'Resumão', '📄'], ['italia', 'Origens', '🌍'], ['docs', 'Documentos', '📎'], ['config', 'Configuração', '⚙️']];
+  const S = { aba: 'painel', convites: [], respostas: [], pessoas: [], docs: [], resp: {}, G: null, zoom: 0, arv: { modo: 'tudo', alvo: '', foco: false, full: false, centrar: null }, filtro: 'todos', temOrigens: true,
     busca: '', novoToken: null, respSel: '', nivel: localStorage.getItem('arv_nivel') || 'equilibrado', diag: null, ligado: false };
   const limiar = () => (NIVEIS[S.nivel] || NIVEIS.equilibrado)[0];
+  const marcaIt = n => n.italiano === 'sim' || n.italiano === 'talvez';
+  const marcaPt = n => n.portugues === 'sim' || n.portugues === 'talvez';
+  const tagsOrigem = n => [marcaIt(n) ? `<span class="tag ${n.italiano === 'sim' ? 'ok' : 'al'}">🇮🇹 ${n.italiano === 'sim' ? 'Itália' : 'Talvez Itália'}</span>` : '', marcaPt(n) ? `<span class="tag ${n.portugues === 'sim' ? 'ok' : 'al'}">🇵🇹 ${n.portugues === 'sim' ? 'Portugal' : 'Talvez Portugal'}</span>` : '', n.outra_origem ? `<span class="tag">🌐 ${esc(n.outra_origem)}</span>` : ''].filter(Boolean).join(' ') || '—';
+  const todasEtapas = () => ETAPAS.concat(ETAPAS_LEGADO.map(e => Object.assign({}, e, { titulo: ETAPA_LEGADO_ROTULO })));
   const rotulo = n => n ? `${n.nome}${anoDe(n.nascimento) ? ' (' + anoDe(n.nascimento) + ')' : ''}` : '—';
   const linkConvite = t => location.href.replace(/[?#].*$/, '').replace(/[^/]*$/, '') + 'index.html?t=' + t;
   const linkBase = t => { const b = location.href.replace(/[?#].*$/, ''); return b.replace(/index\.html$/, '') + (b.endsWith('/') || /index\.html$/.test(location.href.replace(/[?#].*$/, '')) ? '' : '') + '?t=' + t; };
@@ -1229,6 +1262,7 @@ const Admin = (function () {
     S.convites = c.slice().sort((a, b) => (b.criado_em || '').localeCompare(a.criado_em || '')); S.respostas = r; S.pessoas = p; S.docs = d;
     S.resp = {}; r.forEach(x => { (S.resp[x.convite_id] = S.resp[x.convite_id] || {})[x.chave] = { v: x.valor, p: x.pulou }; });
     S.G = montarGrafo(p);
+    S.temOrigens = await API.suportaPortugal().catch(() => false);
   }
   const nos = () => [...S.G.nodes.values()];
   const no = id => S.G.nodes.get(id);
@@ -1243,12 +1277,21 @@ const Admin = (function () {
     for (const c of S.convites) for (const d of derivarPessoas(S.resp[c.id] || {})) {
       const chave = c.id + '|' + d.papel, ex = porChave.get(chave);
       const dados = {}; CAMPOS.forEach(k => { if (d[k] != null) dados[k] = d[k]; });
-      if (!ex) { if (d.italiano) dados.italiano = d.italiano; novos.push(Object.assign(dados, { papel: d.papel, convite_id: c.id, status: 'revisar' })); }
-      else if (!ex.editado) {
-        const patch = {}; CAMPOS.forEach(k => { if (d[k] != null && (ex[k] || '') !== d[k]) patch[k] = d[k]; });
+      if (!ex) { if (d.italiano) dados.italiano = d.italiano; if (S.temOrigens && d.portugues) dados.portugues = d.portugues; novos.push(Object.assign(dados, { papel: d.papel, convite_id: c.id, status: 'revisar' })); }
+      else {
+        const patch = {};
+        if (!ex.editado) {
+          CAMPOS.forEach(k => { if (d[k] != null && (ex[k] || '') !== d[k]) patch[k] = d[k]; });
+          if (d.italiano && !ex.italiano) patch.italiano = d.italiano;
+          if (S.temOrigens && d.portugues && !ex.portugues) patch.portugues = d.portugues;
+        } else {   // já editada à mão: só preenche a origem se nunca foi tocada (nulo); "Sem informação" escolhido de propósito é respeitado
+          if (d.italiano && ex.italiano == null) patch.italiano = d.italiano;
+          if (S.temOrigens && d.portugues && ex.portugues == null) patch.portugues = d.portugues;
+        }
         if (Object.keys(patch).length) { await API.atualizarPessoa(ex.id, patch); Object.assign(ex, patch); atualizadas++; }
       }
     }
+
     for (let i = 0; i < novos.length; i += 100) (await API.criarPessoas(novos.slice(i, i + 100))).forEach(p => { porChave.set(p.convite_id + '|' + p.papel, p); criadas++; });
     // fios dentro de cada questionário (eu → pai/mãe → avós; filhos; irmãos)
     for (const c of S.convites) for (const d of derivarPessoas(S.resp[c.id] || {})) {
@@ -1302,7 +1345,7 @@ const Admin = (function () {
 
   function vPainel() {
     const N = nos(), conv = S.convites, sug = S.pessoas.length ? sugestoes().length : 0, auto = S.pessoas.filter(p => p.mesmo_que).length;
-    const caps = N.filter(ehCap), itas = N.filter(n => n.italiano === 'sim' || n.italiano === 'talvez');
+    const caps = N.filter(ehCap), itas = N.filter(marcaIt), ptas = N.filter(marcaPt);
     const concl = conv.filter(c => c.concluido_em).length, and = conv.filter(c => c.ativo && c.ultimo_acesso && !c.concluido_em).length, nao = conv.filter(c => c.ativo && !c.ultimo_acesso).length, off = conv.filter(c => !c.ativo).length;
     const vivos = N.filter(n => n.falecido === 'nao').length, mortos = N.filter(n => n.falecido === 'sim').length;
     const ger = geracoes(), maxG = Math.max(1, ...ger);
@@ -1320,14 +1363,15 @@ const Admin = (function () {
       <div class="stat"><span class="ic">🔗</span><div><b>${auto}</b><span>ligadas pelo nome</span></div></div>
       <div class="stat ouro"><span class="ic">⭐</span><div><b>${caps.length}</b><span>com sobrenome Capelasso</span></div></div>
       <div class="stat"><span class="ic">🇮🇹</span><div><b>${itas.length}</b><span>com pista italiana</span></div></div>
+      <div class="stat"><span class="ic">🇵🇹</span><div><b>${ptas.length}</b><span>com pista portuguesa</span></div></div>
       <div class="stat"><span class="ic">📎</span><div><b>${S.docs.length}</b><span>documentos enviados</span></div></div></div>
       <div class="duas">
         <div class="painel"><h2>Convites</h2>${conv.length ? barraEmp([{ n: concl, t: 'Concluídos', cor: '#1f5c43' }, { n: and, t: 'Em andamento', cor: '#e0a030' }, { n: nao, t: 'Não abriram', cor: '#b8c4bc' }, { n: off, t: 'Desativados', cor: '#c0392b' }]) : '<p class="vazio">Nenhum convite ainda.</p>'}
           ${recentes.length ? '<h3>Atividade recente</h3>' + recentes.map(c => `<div class="ativ"><b>${esc(c.nome)}</b><span>${pct(c)}%</span><small>${fmtData(c.ultimo_acesso)}</small></div>`).join('') : ''}</div>
         <div class="painel"><h2>Família</h2>${N.length ? barraEmp([{ n: vivos, t: 'Vivos', cor: '#1f5c43' }, { n: mortos, t: 'Falecidos', cor: '#7d8f84' }, { n: N.length - vivos - mortos, t: 'Sem informação', cor: '#d9dfd9' }]) : '<p class="vazio">Ainda sem pessoas.</p>'}
           ${ger.length ? '<h3>Pessoas por geração</h3><div class="bars">' + ger.map((n, i) => `<div class="linha"><span>Geração ${i + 1}</span><div class="trilho"><i style="width:${n / maxG * 100}%"></i></div><b>${n}</b></div>`).join('') + '</div>' : ''}</div></div>
-      <div class="painel destaque"><h2>⭐ Investigação Capelasso e origem italiana</h2><p>${caps.length ? `<b>${caps.length}</b> pessoa(s) com o sobrenome (ou grafia parecida)` : 'Ninguém com o sobrenome cadastrado ainda'} · ${itas.length ? `<b>${itas.length}</b> com pista de origem italiana` : 'nenhuma pista italiana ainda'}.</p>
-        <button class="b cheio" data-aba="italia" style="min-height:42px">Abrir a investigação</button> <button class="b" data-aba="arvore" style="min-height:42px">Ver a árvore</button></div>
+      <div class="painel destaque"><h2>🌍 Origens da família</h2><p>${itas.length ? `<b>${itas.length}</b> com pista de origem italiana` : 'nenhuma pista italiana ainda'} · ${ptas.length ? `<b>${ptas.length}</b> com pista de origem portuguesa` : 'nenhuma pista portuguesa ainda'}${caps.length ? ` · <b>${caps.length}</b> com o sobrenome Capelasso` : ''}.</p>
+        <button class="b cheio" data-aba="italia" style="min-height:42px">Ver as origens</button> <button class="b" data-aba="arvore" style="min-height:42px">Ver a árvore</button></div>
       <div class="painel"><h2>Próximos passos</h2>${prox.length ? '<ul>' + prox.map(x => `<li>${x}</li>`).join('') + '</ul>' : '<p class="vazio">Tudo em dia. 🎉</p>'}
       <button class="b cheio" data-act="sync" style="min-height:44px;margin-top:.5rem">🔄 Atualizar árvore agora</button>
       <p style="color:var(--muted);font-size:.9rem">Importa as respostas novas e liga as pessoas pelo nome. Isso também acontece sozinho ao abrir o painel.</p></div>`;
@@ -1348,7 +1392,7 @@ const Admin = (function () {
   function vRespostas() {
     const sel = S.respSel || (S.convites[0] && S.convites[0].id) || '', c = S.convites.find(x => x.id === sel), r = (c && S.resp[c.id]) || {};
     let corpo = '';
-    if (c) ETAPAS.forEach(e => {
+    if (c) todasEtapas().forEach(e => {
       const l = e.perguntas.filter(q => !q.depende || q.depende(r)).map(q => { const x = r[q.k]; return x ? `<div class="q-r ${x.p ? 'pulou' : ''}"><div>${esc(q.q)}</div><div class="v">${x.p ? 'pulou' : esc(x.v)}</div></div>` : ''; }).join('');
       if (l) corpo += `<h3>${esc(e.titulo)}</h3>${l}`;
     });
@@ -1356,7 +1400,7 @@ const Admin = (function () {
       <select id="rs">${S.convites.map(x => `<option value="${x.id}" ${x.id === sel ? 'selected' : ''}>${esc(x.nome)} (${pct(x)}%)</option>`).join('')}</select>${corpo || '<p class="vazio">Ainda sem respostas.</p>'}</div>`;
   }
 
-  const FILTROS = [['todos', 'Todos', () => true], ['cap', '⭐ Capelasso', n => ehCap(n)], ['ita', '🇮🇹 Itália', n => n.italiano === 'sim' || n.italiano === 'talvez'],
+  const FILTROS = [['todos', 'Todos', () => true], ['cap', '⭐ Capelasso', n => ehCap(n)], ['ita', '🇮🇹 Itália', marcaIt], ['pt', '🇵🇹 Portugal', marcaPt],
     ['sempai', 'Sem pai', n => !n.pai], ['semmae', 'Sem mãe', n => !n.mae], ['mortos', 'Falecidos', n => n.falecido === 'sim'], ['vivos', 'Vivos', n => n.falecido === 'nao'], ['revisar', 'Para revisar', n => n.status !== 'confirmado']];
   function vPessoas() {
     const q = semAcento(S.busca), F = FILTROS.find(f => f[0] === S.filtro) || FILTROS[0], todos = nos();
@@ -1369,7 +1413,7 @@ const Admin = (function () {
       ${lista.map(n => `<tr><td><div class="pessoa-cel">${avatar(n, 'mini')}<div><b>${esc(n.nome)}</b> ${ehCap(n) ? '<span class="tag ouro">Capelasso</span>' : ''} ${n.falecido === 'sim' ? '<span class="tag">✝</span>' : ''} ${n.rows.length > 1 ? `<span class="tag" title="Citada em ${n.rows.length} respostas">🔗 ${n.rows.length}</span>` : ''}
         ${n.conflito ? '<span class="tag al" title="Respostas diferentes sobre o pai/mãe">⚠ conflito</span>' : ''}<br><small>${[...n.convites].map(nomeConvite).map(esc).join(', ')}</small></div></div></td>
         <td>${esc(n.nascimento || '—')}<br><small>${esc(n.local_nascimento || '')}</small></td><td><small>${esc(no(n.pai) ? no(n.pai).nome : '—')}<br>${esc(no(n.mae) ? no(n.mae).nome : '—')}</small></td>
-        <td>${n.italiano === 'sim' ? '<span class="tag ok">Itália</span>' : n.italiano === 'talvez' ? '<span class="tag al">Talvez Itália</span>' : '—'}</td>
+        <td>${tagsOrigem(n)}</td>
         <td>${n.status === 'confirmado' ? '<span class="tag ok">Confirmado</span>' : '<span class="tag al">Revisar</span>'}</td><td style="white-space:nowrap"><button class="b" data-act="ficha" data-id="${n.id}">Ver</button><button class="b" data-act="editar" data-id="${n.id}">Editar</button></td></tr>`).join('') || '<tr><td colspan="6" class="vazio">Ninguém neste filtro.</td></tr>'}</tbody></table></div></div>`;
   }
 
@@ -1399,8 +1443,10 @@ const Admin = (function () {
     return L.map(l => cortar(l, max));
   }
   const SVG_CSS = `<style>text{font-family:'Atkinson Hyperlegible',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}.card{fill:#fff;stroke:#b4c4b8;stroke-width:1.6}.card.cap{fill:#fff9e6;stroke:#c9962a;stroke-width:2.4}.card.morto{fill:#f3f4f0}.card.sel{stroke:#2a6fdb;stroke-width:3.4}.no{cursor:pointer}.no:hover .card,.no:focus .card{stroke:#2a6fdb;stroke-width:2.8}.no:focus{outline:none}.t-nome{font-size:14.5px;font-weight:700;fill:#1b2b24}.t-sub{font-size:13px;fill:#53615a}.t-loc{font-size:12px;fill:#6b7a72}.lig{fill:none;stroke:#8aa394;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}.casal{stroke:#c0392b;stroke-width:3}.banda-t{font-size:12px;font-weight:700;fill:#7d8f84}</style>`;
+  const flagIT = (x, v) => `<g transform="translate(${x},-9)" ${v === 'talvez' ? 'opacity=".62"' : ''}><g clip-path="url(#flag)"><rect width="14" height="18" fill="#2e8b57"/><rect x="14" width="13" height="18" fill="#fff"/><rect x="27" width="14" height="18" fill="#c0392b"/></g><rect width="41" height="18" rx="9" fill="none" stroke="#9fb0a5" stroke-width="1.2"/></g>`;
+  const flagPT = (x, v) => `<g transform="translate(${x},-9)" ${v === 'talvez' ? 'opacity=".62"' : ''}><g clip-path="url(#flag)"><rect width="16" height="18" fill="#1e7a3c"/><rect x="16" width="25" height="18" fill="#c8102e"/><circle cx="16" cy="9" r="4.2" fill="#f2c200" stroke="#fff" stroke-width="1"/></g><rect width="41" height="18" rx="9" fill="none" stroke="#9fb0a5" stroke-width="1.2"/></g>`;
   function cartao(n, x, y, est) {   // est: '' | 'dim' | 'sel'
-    const cap = ehCap(n), it = n.italiano === 'sim' || n.italiano === 'talvez', morto = n.falecido === 'sim', av = avDe(n);
+    const cap = ehCap(n), it = marcaIt(n), pt = marcaPt(n), morto = n.falecido === 'sim', av = avDe(n);
     const ano2 = anoDe(n.falecimento), sub = (morto ? '✝ ' : '') + (anoDe(n.nascimento) || 'ano ?') + (morto && ano2 ? ' – ' + ano2 : '');
     const nome = linhasNome(n.nome, 19), loc = cortar(n.local_nascimento || '', 24), linhas = nome.length + 1 + (loc ? 1 : 0);
     let yy = (CH - linhas * 18) / 2 + 13, t = '';
@@ -1413,7 +1459,7 @@ const Admin = (function () {
       <text x="38" y="${CH / 2 + 5.5}" text-anchor="middle" font-size="16" font-weight="700" fill="${av[2]}">${esc(iniciais(n.nome))}</text>
       ${n.status === 'confirmado' ? `<circle cx="56" cy="${CH / 2 + 19}" r="9" fill="#1f5c43" stroke="#fff" stroke-width="2"/><text x="56" y="${CH / 2 + 23}" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">✓</text>` : ''}
       ${t}
-      ${it ? `<g transform="translate(${CW - 58},-9)" ${n.italiano === 'talvez' ? 'opacity=".62"' : ''}><g clip-path="url(#flag)"><rect width="14" height="18" fill="#2e8b57"/><rect x="14" width="13" height="18" fill="#fff"/><rect x="27" width="14" height="18" fill="#c0392b"/></g><rect width="41" height="18" rx="9" fill="none" stroke="#9fb0a5" stroke-width="1.2"/></g>` : ''}
+      ${(() => { let x = CW - 58, h = ''; if (it) { h += flagIT(x, n.italiano); x -= 48; } if (pt) h += flagPT(x, n.portugues); return h; })()}
       ${n.rows.length > 1 ? `<g transform="translate(${CW - 12},${CH - 10})"><rect x="-42" y="-15" width="42" height="19" rx="9.5" fill="#e4ede6"/><text x="-21" y="-1.5" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1f5c43">🔗 ${n.rows.length}</text></g>` : ''}
       ${cap ? `<g transform="translate(16,-10)"><rect width="80" height="20" rx="10" fill="#b8860b"/><text x="40" y="14" text-anchor="middle" font-size="11.5" font-weight="700" fill="#fff">Capelasso</text></g>` : ''}</g>`;
   }
@@ -1444,9 +1490,10 @@ const Admin = (function () {
     const ys = [...new Set(Object.values(L.pos).map(p => p.y))].sort((a, b) => a - b);
     ys.forEach((y, i) => { s += `<rect x="0" y="${y - 20}" width="${L.w}" height="${CH + 40}" fill="${i % 2 ? '#f2f6f0' : '#f9fbf8'}"/><text class="banda-t" x="16" y="${y + CH / 2 + 4}">Geração ${i + 1}</text>`; });
     L.edges.forEach(e => { const ap = lin && !e.a.every(i => lin.has(i)); s += `<path class="lig" ${ap ? 'opacity=".15"' : ''} d="${cotovelo(e.x1, e.a.length === 3 ? e.y1 + 11 : e.y1, e.x2, e.y2)}"/>`; });
-    L.casais.forEach(c => { const a = L.pos[c.a], b = L.pos[c.b]; s += `<path class="lig casal" d="M${a.x + CW},${a.y + CH / 2} H${b.x}"/>`; });
+    const casais = L.casais.map(c => L.pos[c.a].x <= L.pos[c.b].x ? c : { a: c.b, b: c.a });   // sempre da esquerda para a direita
+    casais.forEach(c => { const a = L.pos[c.a], b = L.pos[c.b]; s += `<path class="lig casal" d="M${a.x + CW},${a.y + CH / 2} H${b.x}"/>`; });
     ids.forEach(i => { if (L.pos[i]) s += cartao(no(i), L.pos[i].x, L.pos[i].y, lin && !lin.has(i) ? 'dim' : (A.foco && i === A.alvo ? 'sel' : '')); });
-    L.casais.forEach(c => { const a = L.pos[c.a], cx = a.x + CW + GXC / 2, cy = a.y + CH / 2; s += `<circle cx="${cx}" cy="${cy}" r="11" fill="#fff" stroke="#c0392b" stroke-width="2"/><text x="${cx}" y="${cy + 4.5}" text-anchor="middle" font-size="12" fill="#c0392b">♥</text>`; });
+    casais.forEach(c => { const a = L.pos[c.a], cx = a.x + CW + GXC / 2, cy = a.y + CH / 2; s += `<circle cx="${cx}" cy="${cy}" r="11" fill="#fff" stroke="#c0392b" stroke-width="2"/><text x="${cx}" y="${cy + 4.5}" text-anchor="middle" font-size="12" fill="#c0392b">♥</text>`; });
     return s + '</svg>';
   }
   function vArvore() {
@@ -1461,7 +1508,7 @@ const Admin = (function () {
         <div><label class="l" for="a-alvo">Pessoa</label><select id="a-alvo">${lista.map(n => `<option value="${n.id}" ${n.id === A.alvo ? 'selected' : ''}>${esc(rotulo(n))}</option>`).join('')}</select></div>
         <div class="busca"><label class="l" for="a-busca">Procurar</label><input id="a-busca" type="text" list="a-lista" placeholder="Digite um nome…" autocomplete="off"><datalist id="a-lista">${lista.map(n => `<option value="${esc(n.nome)}">`).join('')}</datalist></div></div></details>
       ${A.foco ? `<div class="foco-aviso">✨ Linhagem de <b>${esc(no(A.alvo).nome)}</b> em destaque <button class="b" data-act="limpar-foco">Mostrar todos</button></div>` : ''}
-      <details class="legenda-d"><summary>Legenda e dicas</summary><div class="legenda"><span>🟢⚪🔴 bandeira = pista de origem italiana</span><span style="color:#8a5a00">Borda dourada = Capelasso</span><span>♥ = casal</span><span>🔗 n = citada em n respostas e ligada pelo nome</span><span>✓ = dados confirmados</span><span>Toque numa pessoa para ver a ficha · arraste para mover · Ctrl + roda do mouse ou pinça para ampliar</span></div></details>
+      <details class="legenda-d"><summary>Legenda e dicas</summary><div class="legenda"><span>🇮🇹 🇵🇹 bandeirinha = pista de origem italiana ou portuguesa (clara = “talvez”)</span><span style="color:#8a5a00">Borda dourada = Capelasso</span><span>♥ = casal</span><span>🔗 n = citada em n respostas e ligada pelo nome</span><span>✓ = dados confirmados</span><span>Toque numa pessoa para ver a ficha · arraste para mover · Ctrl + roda do mouse ou pinça para ampliar</span></div></details>
       <div class="arv-wrap" id="arv">${svgArvore()}</div></div>`;
   }
   function aplicarZoom(z) {
@@ -1498,8 +1545,8 @@ const Admin = (function () {
     const conj = new Set(); if (n.conj) conj.add(n.conj); filhos.forEach(f => [f.pai, f.mae].forEach(p => { if (p && p !== id) conj.add(p); }));
     const sit = n.falecido === 'sim' ? 'Falecido(a)' + (anoDe(n.falecimento) ? ' em ' + anoDe(n.falecimento) : '') : n.falecido === 'nao' ? 'Vivo(a)' : 'Sem informação';
     const info = [['Nascimento', n.nascimento], ['Local de nascimento', n.local_nascimento], ['Situação', sit], ['Mora em', n.local_atual], ['Sobrenome de solteira', n.sobrenome_solteira], ['Origem da família', n.origem_familia],
-      ['Origem italiana', n.italiano === 'sim' ? 'Sim' : n.italiano === 'talvez' ? 'Talvez' : n.italiano === 'nao' ? 'Não' : ''], ['Anotações', n.notas]].filter(r => r[1]);
-    dlg.innerHTML = `<div class="ficha"><div class="ficha-topo">${avatar(n, 'grande')}<div><h2>${esc(n.nome)}</h2><div>${ehCap(n) ? '<span class="tag ouro">⭐ Capelasso</span> ' : ''}${n.italiano === 'sim' ? '<span class="tag ok">🇮🇹 Itália</span> ' : n.italiano === 'talvez' ? '<span class="tag al">🇮🇹 Talvez</span> ' : ''}${n.status === 'confirmado' ? '<span class="tag ok">✓ confirmado</span>' : '<span class="tag al">para revisar</span>'}</div></div></div>
+      ['Origem italiana', n.italiano === 'sim' ? 'Sim' : n.italiano === 'talvez' ? 'Talvez' : n.italiano === 'nao' ? 'Não' : ''], ['Origem portuguesa', n.portugues === 'sim' ? 'Sim' : n.portugues === 'talvez' ? 'Talvez' : n.portugues === 'nao' ? 'Não' : ''], ['Outra origem', n.outra_origem], ['Anotações', n.notas]].filter(r => r[1]);
+    dlg.innerHTML = `<div class="ficha"><div class="ficha-topo">${avatar(n, 'grande')}<div><h2>${esc(n.nome)}</h2><div>${ehCap(n) ? '<span class="tag ouro">⭐ Capelasso</span> ' : ''}${marcaIt(n) || marcaPt(n) || n.outra_origem ? tagsOrigem(n) + ' ' : ''}${n.status === 'confirmado' ? '<span class="tag ok">✓ confirmado</span>' : '<span class="tag al">para revisar</span>'}</div></div></div>
       <dl class="ficha-info">${info.map(r => `<dt>${r[0]}</dt><dd>${esc(r[1])}</dd>`).join('') || '<dd>Sem dados ainda.</dd>'}</dl>
       <div class="ficha-rel"><div><span>Pai</span>${n.pai ? chip(n.pai) : '<em>sem dados por enquanto</em>'}</div><div><span>Mãe</span>${n.mae ? chip(n.mae) : '<em>sem dados por enquanto</em>'}</div>
         <div><span>Cônjuge</span>${conj.size ? [...conj].map(chip).join('') : '<em>nenhum cadastrado</em>'}</div><div><span>Filhos(as)</span>${filhos.length ? filhos.map(f => chip(f.id)).join('') : '<em>nenhum cadastrado</em>'}</div></div>
@@ -1536,7 +1583,7 @@ const Admin = (function () {
       t += `━━━ GERAÇÃO ${gi + 1}${gi === 0 ? ' (mais antiga)' : gi === niveis.length - 1 && niveis.length > 1 ? ' (mais nova)' : ''} ━━━\n\n`;
       ord.filter(n => L.pos[n.id].y === y).forEach(n => {
         i++;
-        const marcas = (ehCap(n) ? ' · [Capelasso]' : '') + (n.italiano === 'sim' ? ' · [origem italiana]' : n.italiano === 'talvez' ? ' · [talvez origem italiana]' : '');
+        const marcas = (ehCap(n) ? ' · [Capelasso]' : '') + (n.italiano === 'sim' ? ' · [origem italiana]' : n.italiano === 'talvez' ? ' · [talvez origem italiana]' : '') + (n.portugues === 'sim' ? ' · [origem portuguesa]' : n.portugues === 'talvez' ? ' · [talvez origem portuguesa]' : '') + (n.outra_origem ? ' · [origem: ' + n.outra_origem + ']' : '');
         t += `${i}. ${n.nome}${anoDe(n.nascimento) ? ' (' + anoDe(n.nascimento) + ')' : ''} — ${sit(n)}${n.local_nascimento ? ' · nasceu em ' + n.local_nascimento : ''}${marcas}\n`;
         t += `   Pai: ${nomeDe(n.pai) || SEM}\n   Mãe: ${nomeDe(n.mae) || SEM}\n`;
         const par = parceiros(n); t += `   Cônjuge/parceiro(a): ${par.length ? par.join(', ') : NENHUM}\n`;
@@ -1556,27 +1603,39 @@ const Admin = (function () {
       <pre class="resumao">${esc(textoResumao())}</pre></div>`;
   }
 
-  // ------------------------------------------------------------ Capelasso e Itália
+  // ------------------------------------------------------------ Origens (Itália, Portugal, outras)
   function vItalia() {
-    const N = nos(), caps = N.filter(ehCap), itas = N.filter(n => n.italiano === 'sim' || n.italiano === 'talvez'), pc = S.convites.map(c => ({ c, r: S.resp[c.id] || {} }));
-    const blocos = (pref, titulo) => `<div class="painel"><h2>${titulo}</h2>${pc.map(({ c, r }) => { const it = PERGUNTAS.filter(q => q.k.startsWith(pref) && r[q.k] && !r[q.k].p).map(q => `<div class="q-r"><div>${esc(q.q)}</div><div class="v"><b>${esc(r[q.k].v)}</b></div></div>`).join(''); return it ? `<h3>${esc(c.nome)}</h3>${it}` : ''; }).join('') || '<p class="vazio">Ainda sem respostas.</p>'}</div>`;
-    const lug = {}; pc.forEach(({ r }) => ['it.lugar', 'cap.onde'].forEach(k => { if (r[k] && !r[k].p && r[k].v) { const t = r[k].v.trim(); lug[t] = (lug[t] || 0) + 1; } }));
-    const col = k => pc.map(({ r }) => r[k] && !r[k].p ? r[k].v : '').filter(Boolean);
-    const lst = a => a.length ? '<ul>' + a.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>' : '<p class="vazio">—</p>';
-    return `<div class="painel" style="border-left:8px solid var(--ouro)"><h2>Resumo da investigação</h2>
-      <h3>Pessoas com o sobrenome Capelasso (ou grafia parecida)</h3>${caps.length ? '<ul>' + caps.map(n => `<li><a href="#" data-act="abrir-arv" data-id="${n.id}"><b>${esc(n.nome)}</b></a> — ${esc(n.nascimento || 'ano ?')}, ${esc(n.local_nascimento || 'local ?')}</li>`).join('') + '</ul>' : '<p class="vazio">Ninguém cadastrado com esse sobrenome ainda.</p>'}
-      <h3>Pessoas com pista de origem italiana</h3>${itas.length ? '<ul>' + itas.map(n => `<li><b>${esc(n.nome)}</b> <span class="tag ${n.italiano === 'sim' ? 'ok' : 'al'}">${n.italiano === 'sim' ? 'Itália' : 'Talvez'}</span> ${esc(n.origem_familia || '')}</li>`).join('') + '</ul>' : '<p class="vazio">Ninguém ainda.</p>'}
-      <h3>Lugares citados</h3>${Object.keys(lug).length ? '<ul>' + Object.entries(lug).map(([k, v]) => `<li>${esc(k)}${v > 1 ? ` <span class="tag">${v}×</span>` : ''}</li>`).join('') + '</ul>' : '<p class="vazio">—</p>'}
-      <h3>Datas de chegada ao Brasil</h3>${lst(col('it.chegada'))}<h3>Onde chegaram / foram morar primeiro</h3>${lst(col('it.porto'))}<h3>Outras grafias do sobrenome</h3>${lst(col('cap.grafia'))}
-      <h3>Parentes mais velhos para entrevistar</h3>${lst(pc.map(({ c, r }) => r['it.mais_velho'] && !r['it.mais_velho'].p ? `${c.nome}: ${r['it.mais_velho'].v}` : '').filter(Boolean))}</div>
-      ${blocos('cap.', 'Respostas sobre o sobrenome Capelasso')}${blocos('it.', 'Respostas sobre origem italiana')}
-      <div class="painel"><h2>Por onde pesquisar</h2><p style="color:var(--muted)">Ainda <b>não sabemos</b> se Capelasso tem origem italiana: é o que esta investigação vai descobrir. Caminhos:</p><ul>
-        <li><b>Converse com os mais velhos</b> (lista acima) e anote nomes, lugares e datas.</li><li><b>Procure documentos em casa:</b> certidões de nascimento, casamento e óbito, carteira de trabalho, passaportes, cartas, fotos com verso escrito.</li>
-        <li><b>Teste variações de grafia</b>: Capelasso, Capelaço, Cappelasso, Capellazzo, Cappellazzo, Capelazzo.</li>
-        <li><b>FamilySearch</b> (<a href="https://www.familysearch.org" target="_blank" rel="noopener">familysearch.org</a>): gratuito, com registros civis e paroquiais do Brasil e da Itália.</li>
-        <li><b>Portale Antenati</b> (<a href="https://antenati.cultura.gov.it" target="_blank" rel="noopener">antenati.cultura.gov.it</a>): registros civis italianos digitalizados, quando já houver o município de origem.</li>
-        <li><b>Cartórios e paróquias</b> onde o ancestral viveu: casamentos e batismos costumam trazer pais e local de nascimento.</li>
-        <li>Se aparecer ascendência italiana e você pensar em cidadania, <b>confira as regras vigentes</b> em fonte oficial: elas mudaram recentemente.</li></ul></div>`;
+    const N = nos(), caps = N.filter(ehCap), itas = N.filter(marcaIt), ptas = N.filter(marcaPt), outras = N.filter(n => n.outra_origem), pc = S.convites.map(c => ({ c, r: S.resp[c.id] || {} }));
+    const linhaQ = (r, q) => `<div class="q-r"><div>${esc(q.q)}</div><div class="v"><b>${esc(r[q.k].v)}</b></div></div>`;
+    const blocos = (prefs, titulo, vazio) => { const h = pc.map(({ c, r }) => { const it = PERGUNTAS.filter(q => prefs.some(p => q.k.startsWith(p)) && r[q.k] && !r[q.k].p).map(q => linhaQ(r, q)).join(''); return it ? `<h3>${esc(c.nome)}</h3>${it}` : ''; }).join(''); return h || vazio ? `<div class="painel"><h2>${titulo}</h2>${h || '<p class="vazio">Ainda sem respostas.</p>'}</div>` : ''; };
+    const col = ks => pc.flatMap(({ c, r }) => ks.map(k => r[k] && !r[k].p && r[k].v ? { de: c.nome, v: r[k].v } : null).filter(Boolean));
+    const lst = a => a.length ? '<ul>' + a.map(x => `<li>${esc(x.v)} <small style="color:var(--muted)">— ${esc(x.de)}</small></li>`).join('') + '</ul>' : '<p class="vazio" style="padding:.4rem 0">—</p>';
+    const pessoasLi = (lista, bandeira) => lista.length ? '<ul>' + lista.map(n => `<li><a href="#" data-act="abrir-arv" data-id="${n.id}"><b>${esc(n.nome)}</b></a> ${tagsOrigem(n)} <small style="color:var(--muted)">${esc([n.nascimento, n.local_nascimento, n.origem_familia].filter(Boolean).join(' · '))}</small></li>`).join('') + '</ul>' : `<p class="vazio" style="padding:.4rem 0">Ninguém marcado ainda. ${bandeira} Abra uma pessoa e marque a origem, ou espere as respostas.</p>`;
+    const lug = {}; N.forEach(n => { if (n.origem_familia && (marcaIt(n) || marcaPt(n))) lug[n.origem_familia] = (lug[n.origem_familia] || 0) + 1; });
+    col(['orig.lugar', 'it.lugar', 'cap.onde']).forEach(x => { lug[x.v.trim()] = (lug[x.v.trim()] || 0) + 1; });
+    const temAntigas = pc.some(({ r }) => Object.keys(r).some(k => /^(cap|it)\./.test(k)));
+    return `<div class="painel" style="border-left:8px solid var(--verde)"><h2>🌍 Origens da família</h2>
+      <div class="grade" style="margin-bottom:.4rem"><div class="stat"><span class="ic">🇮🇹</span><div><b>${itas.length}</b><span>com pista italiana</span></div></div><div class="stat"><span class="ic">🇵🇹</span><div><b>${ptas.length}</b><span>com pista portuguesa</span></div></div><div class="stat"><span class="ic">🌐</span><div><b>${outras.length}</b><span>outra origem</span></div></div></div>
+      <p style="color:var(--muted);font-size:.92rem">Para marcar alguém, toque na pessoa (na árvore ou em <b>Pessoas</b>) e escolha <i>Origem italiana</i> e/ou <i>Origem portuguesa</i>. As marcas aparecem como bandeirinhas nos cartões. Quando uma resposta cita “Itália” ou “Portugal” na origem da família, a marca “talvez” é colocada sozinha.</p>
+      <h3>🇮🇹 Origem italiana</h3>${pessoasLi(itas, '🇮🇹')}<h3>🇵🇹 Origem portuguesa</h3>${pessoasLi(ptas, '🇵🇹')}
+      ${outras.length ? '<h3>🌐 Outra origem</h3>' + pessoasLi(outras, '') : ''}</div>
+      <div class="painel"><h2>O que a família contou</h2>
+        <h3>Quem é de outra origem, e de onde veio</h3>${lst(col(['orig.quem', 'it.quem']))}
+        <h3>Lugares citados</h3>${Object.keys(lug).length ? '<ul>' + Object.entries(lug).map(([k, v]) => `<li>${esc(k)}${v > 1 ? ` <span class="tag">${v}×</span>` : ''}</li>`).join('') + '</ul>' : '<p class="vazio" style="padding:.4rem 0">—</p>'}
+        <h3>Quando chegaram ao Brasil</h3>${lst(col(['orig.chegada', 'it.chegada']))}<h3>Onde chegaram ou foram morar primeiro</h3>${lst(col(['orig.porto', 'it.porto']))}
+        <h3>Sobrenomes antigos ou com outra grafia</h3>${lst(col(['orig.sobrenomes', 'cap.grafia']))}
+        <h3>Parentes mais velhos para entrevistar</h3>${lst(col(['orig.mais_velho', 'it.mais_velho']))}</div>
+      ${caps.length ? `<div class="painel"><h2>⭐ Sobrenome Capelasso (ou grafia parecida)</h2><ul>${caps.map(n => `<li><a href="#" data-act="abrir-arv" data-id="${n.id}"><b>${esc(n.nome)}</b></a> ${tagsOrigem(n)} <small style="color:var(--muted)">${esc([n.nascimento, n.local_nascimento].filter(Boolean).join(' · '))}</small></li>`).join('')}</ul></div>` : ''}
+      ${blocos(['orig.'], 'Respostas completas sobre as origens', true)}${temAntigas ? blocos(['cap.', 'it.'], 'Respostas antigas (sobrenome Capelasso e origem italiana)', false) : ''}
+      <div class="painel"><h2>Por onde pesquisar</h2><p style="color:var(--muted)">Antes de afirmar uma origem, confirme em documentos. Caminhos:</p><ul>
+        <li><b>Converse com os mais velhos</b> (lista acima) e anote nomes, lugares e datas.</li>
+        <li><b>Procure documentos em casa:</b> certidões de nascimento, casamento e óbito, carteira de trabalho, passaportes, cartas, fotos com verso escrito.</li>
+        <li><b>Teste variações de grafia</b> dos sobrenomes: os escrivães trocavam letras (ex.: Capelasso, Capelaço, Cappellazzo; Gonçalves, Gonsalves).</li>
+        <li><b>FamilySearch</b> (<a href="https://www.familysearch.org" target="_blank" rel="noopener">familysearch.org</a>): gratuito, com registros civis e paroquiais do Brasil, da Itália e de Portugal.</li>
+        <li>🇮🇹 <b>Portale Antenati</b> (<a href="https://antenati.cultura.gov.it" target="_blank" rel="noopener">antenati.cultura.gov.it</a>): registros civis italianos digitalizados, quando já houver o município de origem.</li>
+        <li>🇵🇹 <b>DigitArq</b> (<a href="https://digitarq.arquivos.pt" target="_blank" rel="noopener">digitarq.arquivos.pt</a>): base dos arquivos portugueses, com muitos registros paroquiais e civis digitalizados, quando já houver o concelho ou a freguesia de origem.</li>
+        <li><b>Cartórios e paróquias</b> onde o ancestral viveu no Brasil: casamentos e batismos costumam trazer pais e local de nascimento.</li>
+        <li>Se aparecer ascendência italiana ou portuguesa e você pensar em cidadania, <b>confira as regras vigentes</b> em fonte oficial (consulado ou governo do país): elas mudam com frequência.</li></ul></div>`;
   }
 
   function vDocs() {
@@ -1591,10 +1650,10 @@ const Admin = (function () {
   }
   function csvPessoas() {
     const c = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"', nm = id => (id && no(id)) ? no(id).nome : '';
-    const L = [['Nome', 'Nascimento', 'Local de nascimento', 'Situação', 'Ano de falecimento', 'Pai', 'Mãe', 'Cônjuge', 'Filhos', 'Origem italiana', 'Capelasso', 'Confirmado'].map(c).join(';')];
+    const L = [['Nome', 'Nascimento', 'Local de nascimento', 'Situação', 'Ano de falecimento', 'Pai', 'Mãe', 'Cônjuge', 'Filhos', 'Origem italiana', 'Origem portuguesa', 'Outra origem', 'Capelasso', 'Confirmado'].map(c).join(';')];
     nos().sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')).forEach(n => {
       const f = (S.G.filhos.get(n.id) || []).map(no).filter(Boolean).map(x => x.nome).join(', ');
-      L.push([n.nome, n.nascimento, n.local_nascimento, n.falecido === 'sim' ? 'Falecido(a)' : n.falecido === 'nao' ? 'Vivo(a)' : '', n.falecimento, nm(n.pai), nm(n.mae), nm(n.conj), f, n.italiano, ehCap(n) ? 'sim' : '', n.status === 'confirmado' ? 'sim' : ''].map(c).join(';'));
+      L.push([n.nome, n.nascimento, n.local_nascimento, n.falecido === 'sim' ? 'Falecido(a)' : n.falecido === 'nao' ? 'Vivo(a)' : '', n.falecimento, nm(n.pai), nm(n.mae), nm(n.conj), f, n.italiano, n.portugues, n.outra_origem, ehCap(n) ? 'sim' : '', n.status === 'confirmado' ? 'sim' : ''].map(c).join(';'));
     });
     baixar('pessoas-familia.csv', '\ufeff' + L.join('\r\n'), 'text/csv;charset=utf-8');
   }
@@ -1622,10 +1681,10 @@ const Admin = (function () {
     const alias = (n.rows || []).filter(r => r.id !== n.id);
     dlg.innerHTML = `<h2>${id ? 'Editar pessoa' : 'Nova pessoa'}</h2><form id="f-ed" method="dialog"><div class="form-linha">
       ${campo('nome', 'Nome completo')}${campo('nascimento', 'Nascimento (ano)')}${campo('local_nascimento', 'Local de nascimento')}${campo('local_atual', 'Mora em')}${campo('sobrenome_solteira', 'Sobrenome de solteira')}${campo('falecimento', 'Ano de falecimento')}
-      ${sel('sexo', 'Sexo', [['', '?'], ['Homem', 'Homem'], ['Mulher', 'Mulher']])}${sel('falecido', 'Falecido?', [['', '?'], ['nao', 'Vivo(a)'], ['sim', 'Falecido(a)']])}${sel('italiano', 'Origem italiana?', [['', 'Sem informação'], ['sim', 'Sim'], ['talvez', 'Talvez'], ['nao', 'Não']])}
+      ${sel('sexo', 'Sexo', [['', '?'], ['Homem', 'Homem'], ['Mulher', 'Mulher']])}${sel('falecido', 'Falecido?', [['', '?'], ['nao', 'Vivo(a)'], ['sim', 'Falecido(a)']])}${sel('italiano', '🇮🇹 Origem italiana?', [['', 'Sem informação'], ['sim', 'Sim'], ['talvez', 'Talvez'], ['nao', 'Não']])}${S.temOrigens ? sel('portugues', '🇵🇹 Origem portuguesa?', [['', 'Sem informação'], ['sim', 'Sim'], ['talvez', 'Talvez'], ['nao', 'Não']]) + campo('outra_origem', '🌐 Outra origem (ex.: Espanha)') : ''}
       <div><label class="l" for="e-pai">Pai</label><select id="e-pai">${opts(n.pai, id)}</select></div><div><label class="l" for="e-mae">Mãe</label><select id="e-mae">${opts(n.mae, id)}</select></div>
       <div><label class="l" for="e-conj">Marido/esposa</label><select id="e-conj">${opts(n.conj, id)}</select></div>${campo('origem_familia', 'Origem da família (texto)')}${campo('contato', 'Contato')}</div>
-      <label class="l" for="e-notas" style="margin-top:.7rem">Anotações</label><textarea id="e-notas" rows="3">${esc(n.notas || '')}</textarea>
+      ${S.temOrigens ? '' : '<p class="tag al" style="display:block;margin:.6rem 0;padding:.4rem .7rem">Para marcar origem portuguesa, rode o SQL do aviso no topo do painel (aba Configuração).</p>'}<label class="l" for="e-notas" style="margin-top:.7rem">Anotações</label><textarea id="e-notas" rows="3">${esc(n.notas || '')}</textarea>
       <label style="display:block;margin:.7rem 0"><input type="checkbox" id="e-conf" ${n.status === 'confirmado' ? 'checked' : ''}> Dados revisados e confirmados</label>
       ${id ? `<div class="painel" style="background:#f7faf6"><b>Ligações por nome</b>${alias.length ? alias.map(r => `<div style="margin:.4rem 0">🔗 ${esc(r.nome)} <small>(${esc(nomeConvite(r.convite_id))})</small> <button type="button" class="b" data-act="desfazer-modal" data-id="${r.id}">Desfazer</button></div>`).join('') : '<p style="margin:.3rem 0;color:var(--muted)">Nenhuma outra resposta ligada a esta pessoa.</p>'}
         <label class="l" for="e-lig" style="margin-top:.6rem">Ligar manualmente com outra pessoa (é a mesma)</label><div style="display:flex;gap:.4rem"><select id="e-lig">${opts('', id)}</select><button type="button" class="b cheio" id="e-lig-b">Ligar</button></div></div>` : ''}
@@ -1638,7 +1697,7 @@ const Admin = (function () {
       seguro(async () => {
         const v = k => $('#e-' + k).value.trim();
         const dados = { nome: v('nome'), nascimento: v('nascimento'), local_nascimento: v('local_nascimento'), local_atual: v('local_atual'), sobrenome_solteira: v('sobrenome_solteira'), falecimento: v('falecimento'),
-          sexo: v('sexo'), falecido: v('falecido'), italiano: v('italiano'), pai_id: v('pai') || null, mae_id: v('mae') || null, conjuge_id: v('conj') || null, origem_familia: v('origem_familia'),
+          sexo: v('sexo'), falecido: v('falecido'), italiano: v('italiano'), ...(S.temOrigens ? { portugues: v('portugues'), outra_origem: v('outra_origem') } : {}), pai_id: v('pai') || null, mae_id: v('mae') || null, conjuge_id: v('conj') || null, origem_familia: v('origem_familia'),
           contato: v('contato'), notas: v('notas'), status: $('#e-conf').checked ? 'confirmado' : 'revisar', editado: true };
         if (!dados.nome) return aviso('Escreva o nome da pessoa.');
         if (id) await API.atualizarPessoa(id, dados); else await API.criarPessoas([dados]);
@@ -1656,7 +1715,9 @@ const Admin = (function () {
   function desenhar() {
     const ns = S.pessoas.length ? sugestoes().length : 0;
     $('#abas').innerHTML = ABAS.map(([k, n, e]) => `<button data-aba="${k}" class="${S.aba === k ? 'on' : ''}"><span class="ic" aria-hidden="true">${e}</span><span class="tx">${n}</span>${k === 'ligacoes' && ns ? `<span class="badge">${ns}</span>` : ''}</button>`).join('');
-    $('#conteudo').innerHTML = VISTAS[S.aba]();
+    const sqlMig = "alter table public.pessoas add column if not exists portugues text;\nalter table public.pessoas add column if not exists outra_origem text;";
+    const aviso = (!S.temOrigens && API.modo === 'remoto') ? `<div class="painel aviso-sql"><h2>🇵🇹 Falta ativar a marcação de Portugal</h2><p>O seu banco foi criado antes desta atualização. Para poder marcar quem é de Portugal, copie o SQL abaixo, cole no <b>Supabase → SQL Editor → New query</b> e clique <b>Run</b>. Leva 5 segundos e <b>não apaga nada</b>. Depois recarregue esta página.</p><pre class="sql" style="max-height:none">${esc(sqlMig)}</pre><button class="b cheio" data-act="copiar-mig" style="min-height:42px">Copiar SQL</button></div>` : '';
+    $('#conteudo').innerHTML = aviso + VISTAS[S.aba]();
     if (S.aba === 'arvore') ajustarInicial();
     if (S.aba === 'arvore' && S.arv.centrar) { const id = S.arv.centrar; S.arv.centrar = null; setTimeout(() => centrar(id), 60); }
   }
@@ -1692,6 +1753,7 @@ const Admin = (function () {
       if (a === 'abrir-arv') { ev.preventDefault(); return abrirFocoNaArvore(d.id, 'tudo', true); }
       seguro(async () => {
         if (a === 'copiar') { const l = linkFam(d.t); try { await navigator.clipboard.writeText(l); aviso('Link copiado ✓'); } catch (e) { prompt('Copie o link:', l); } }
+        else if (a === 'copiar-mig') { try { await navigator.clipboard.writeText('alter table public.pessoas add column if not exists portugues text;\nalter table public.pessoas add column if not exists outra_origem text;'); aviso('SQL copiado ✓'); } catch (e) { aviso('Selecione o texto e copie manualmente.'); } }
         else if (a === 'copiar-sql') { try { await navigator.clipboard.writeText($('#sql-src').textContent); aviso('SQL copiado ✓'); } catch (e) { aviso('Selecione o texto e copie manualmente.'); } }
         else if (a === 'copiar-resumo') { try { await navigator.clipboard.writeText(textoResumao()); aviso('Resumão copiado ✓'); } catch (e) { aviso('Selecione o texto e copie manualmente.'); } }
         else if (a === 'baixar-resumo') baixar('resumao-familia.txt', textoResumao(), 'text/plain;charset=utf-8');
